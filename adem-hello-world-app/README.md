@@ -11,7 +11,7 @@ It shows use of a Node.js + Express backend with a MongoDB database.
 ssh compsci.adelphi.edu
 
 ### 2. After login, Move into the shared group project folder
-cd /home/groupprojects/fall2025_530_course/adem_hello_world_app
+cd /home/groupprojects/fall2025_530_course/adem-hello-world-app
 
 ### 3. Install dependencies and start the app
 npm install
