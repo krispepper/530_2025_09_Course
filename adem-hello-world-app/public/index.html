@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8" />
+        <title>Team Sprint 1 Tasks</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+
+    <body>
+        <h1>Group Sprint 1 Tasks</h1>
+        <ul id="taskList">Loading...</ul>
+        <script>
+            fetch("/api/tasks")
+                .then(r => r.json())
+                .then(tasks => {
+                    const list = document.getElementById("taskList");
+                    list.innerHTML = "";
+                    tasks.forEach(t => {
+                        const li = document.createElement("li");
+                        li.textContent = `${t.title} – ${t.status}`;
+                        list.appendChild(li);
+                    });
+                })
+                .catch(() => {
+                    document.getElementById("taskList").innerText = "Error loading tasks.";
+                });
+        </script>
+    </body>
+
+</html>
