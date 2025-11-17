@@ -1,1 +1,4 @@
-Readme
+﻿- Requirements: Node.js LTS, MongoDB
+- Install and start:
+  - `npm install`
+  - `npm start`

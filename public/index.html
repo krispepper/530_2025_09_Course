@@ -1,0 +1,28 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Course Feedback — Sprint 1</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <h1>Course Feedback</h1>
+    <ul id="feedbackList">Loading...</ul>
+    <script>
+      fetch("/api/feedback")
+        .then(r => r.json())
+        .then(items => {
+          const list = document.getElementById("feedbackList");
+          list.innerHTML = "";
+          items.forEach(fb => {
+            const li = document.createElement("li");
+            li.textContent = `${fb.courseId} — ${fb.rating}/5 — ${fb.comments || ''}`;
+            list.appendChild(li);
+          });
+        })
+        .catch(() => {
+          document.getElementById("feedbackList").innerText = "Error loading feedback.";
+        });
+    </script>
+  </body>
+</html>
