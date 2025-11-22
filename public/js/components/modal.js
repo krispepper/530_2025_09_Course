@@ -32,4 +32,5 @@ export function showModal(title, message) {
 export function closeModal() {
   const root = $("#modal-root");
   if (root) root.innerHTML = "";
+  window.location.href = "/dashboard";
 }
