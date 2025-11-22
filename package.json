@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "name": "project-backend",
   "version": "1.0.0",
   "description": "",
@@ -21,5 +22,12 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.11"
+=======
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "jsdom": "^27.2.0",
+    "mongodb": "^7.0.0"
+>>>>>>> d56b7e441bb2117eb444d4b340a3ae5d233af5f2
   }
 }

@@ -1,0 +1,19 @@
+{
+	"name": "adem",
+	"version": "1.0.0",
+	"description": "This is a simple Hello World web app for the M3 Hello World Coding assignment.  \r It shows use of a Node.js + Express backend with a MongoDB database.  \r ---",
+	"main": "app.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"start": "node app.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"dotenv": "^17.2.3",
+		"express": "^5.1.0",
+		"jsdom": "^27.2.0",
+		"mongodb": "^7.0.0"
+	}
+}
