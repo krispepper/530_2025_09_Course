@@ -2,27 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Course Feedback — Sprint 1</title>
-    <link rel="stylesheet" href="styles.css" />
+    <title>Course Evaluation Portal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <h1>Course Feedback</h1>
-    <ul id="feedbackList">Loading...</ul>
-    <script>
-      fetch("/api/feedback")
-        .then(r => r.json())
-        .then(items => {
-          const list = document.getElementById("feedbackList");
-          list.innerHTML = "";
-          items.forEach(fb => {
-            const li = document.createElement("li");
-            li.textContent = `${fb.courseId} — ${fb.rating}/5 — ${fb.comments || ''}`;
-            list.appendChild(li);
-          });
-        })
-        .catch(() => {
-          document.getElementById("feedbackList").innerText = "Error loading feedback.";
-        });
-    </script>
+    <div class="app-shell">
+      <header class="header">
+        <div class="header-title">Course Evaluation Portal</div>
+        <div class="header-user">Student Demo</div>
+      </header>
+
+      <div class="app-body">
+        <aside class="sidebar">
+          <nav class="nav">
+            <a href="/dashboard" data-link class="nav-link">Dashboard</a>
+            <a href="/evaluate" data-link class="nav-link">Evaluation Form</a>
+            <a href="/admin/reports" data-link class="nav-link">Admin Reports</a>
+          </nav>
+        </aside>
+
+        <main id="app-content" class="app-content"></main>
+      </div>
+    </div>
+
+    <div id="toast-root"></div>
+    <div id="modal-root"></div>
+
+    <script type="module" src="/js/main.js"></script>
   </body>
 </html>
