@@ -1,20 +1,14 @@
-﻿require("dotenv").config();
-const { connectDB } = require("./db");
+require("dotenv").config();
+const { connectDB } = require("./src/db");
 const app = require("./app");
 
 const PORT = process.env.PORT || 3000;
 
-async function start() {
-  try {
-    await connectDB();
-    console.log("DB connected");
-  } catch (err) {
-    console.log("⚠ MongoDB not running. Continuing without database...");
-  }
-
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+connectDB()
+  .then(() => {
+    app.listen(PORT, () => console.log(`Server up on http://localhost:${PORT}`));
+  })
+  .catch((err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
   });
-}
-
-start();
