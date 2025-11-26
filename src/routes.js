@@ -69,11 +69,13 @@ router.put("/tasks/:id", async (req, res) => {
             { returnDocument: "after" }
         );
 
-        if (!result.value) {
+        // MongoDB driver v7 returns the document directly, older versions return { value, ... }
+        const updatedDoc = result?.value ?? result;
+        if (!updatedDoc) {
             return res.status(404).json({ error: "Task not found" });
         }
 
-        res.json(normalizeTask(result.value));
+        res.json(normalizeTask(updatedDoc));
     } catch (err) {
         res.status(500).json({ error: "Database error" });
     }
