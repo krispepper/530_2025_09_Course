@@ -57,16 +57,14 @@ router.post('/', isAuthenticated, hasRole('instructor', 'admin'), async (req, re
 // @access  Authenticated users
 router.get('/', isAuthenticated, async (req, res) => {
   try {
-    const { role } = req.session;
-
     let courses;
 
-    if (role === 'student') {
+    if (req.session.userRole === 'student') {
       // Students see only courses they're enrolled in
       courses = await Course.find({ students: req.session.userId })
         .populate('instructor', 'email role')
         .populate('students', 'email role');
-    } else if (role === 'instructor') {
+    } else if (req.session.userRole === 'instructor') {
       // Instructors see only their courses
       courses = await Course.find({ instructor: req.session.userId })
         .populate('instructor', 'email role')
