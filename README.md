@@ -1,3 +1,4 @@
+(This is for my reference only)
 # Course Evaluation System - Backend API
 ### Prerequisites
 - Node.js installed
@@ -356,19 +357,7 @@ db.users.find().pretty()
 - ✅ **Duplicate Prevention:** Cannot register same email twice
 - ✅ **Role-Based System:** Supports student, instructor, and admin roles
 
----
-
-## 🛠️ Technologies Used
-
-- **Node.js** - JavaScript runtime
-- **Express.js** - Web framework
-- **MongoDB Atlas** - Cloud database
-- **Mongoose** - MongoDB object modeling
-- **bcryptjs** - Password hashing
-- **express-session** - Session management
-- **dotenv** - Environment variables
-
----
+--
 
 ## 📊 Testing
 
@@ -385,43 +374,8 @@ This runs 13 UAT (User Acceptance Tests) covering:
 - Session management
 - Role-based registration
 
----
-
-## 📁 Project Structure
-
-```
-project-backend/
-├── config/
-│   └── db.js              # MongoDB connection
-├── models/
-│   └── User.js            # User schema
-├── routes/
-│   └── auth.js            # Authentication routes
-├── middleware/
-│   └── auth.js            # Authorization middleware
-├── tests/
-│   └── auth.test.js       # UAT tests
-├── .env                   # Environment variables
-├── server.js              # Main server file
-└── package.json           # Dependencies
-```
 
 ---
-
-## 🎯 What's Next?
-
-Future features to be implemented:
-- Course Management (Create courses, enroll students)
-- Evaluation System (Create evaluations, set questions)
-- Response Submission (Students submit evaluations)
-- Results View (Instructors view aggregated results)
-
----
-
-## 👨‍💻 Developer
-
-**Sunny**  
-Backend Developer
 
 ---
 
