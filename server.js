@@ -38,6 +38,7 @@ app.use(session({
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/courses', require('./routes/course'));
+app.use('/api/evaluations', require('./routes/evaluation'));
 
 // Test route
 app.get('/', (req, res) => {
