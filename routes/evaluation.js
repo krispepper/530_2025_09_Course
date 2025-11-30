@@ -119,7 +119,7 @@ router.get('/', isAuthenticated, async (req, res) => {
     // For students, also check if they've already submitted
     if (req.session.userRole === 'student') {
       const evaluationsWithStatus = await Promise.all(
-        evaluations.map(async (eval) => {
+        evaluations.map(async (evaluation) => {
           const response = await Response.findOne({
             evaluation: eval._id,
             student: req.session.userId
