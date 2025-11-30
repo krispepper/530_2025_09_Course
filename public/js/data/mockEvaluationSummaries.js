@@ -30,5 +30,20 @@ export const mockEvaluationSummaries = [
     section: "001",
     submissions: 19,
     lastUpdated: "2025-04-20"
-  }
+  },
+  {
+  term: "Fall 2025",
+  course: "CS 530",
+  section: "01",
+  submissions: 18,
+  lastUpdated: "2025-11-20",
+  avgOverall: 4.3,
+  avgInstructor: 4.5,
+  avgCourse: 4.1,
+  topComments: [
+    "Great instructor, very clear explanations.",
+    "Assignments were challenging but fair.",
+    "Would recommend this course to others."
+  ]
+}
 ];
