@@ -136,3 +136,11 @@ exit
 - bcryptjs - Password hashing
 - express-session - Session management
 - Jest & Supertest - Testing framework
+
+
+Server Location: sunnyrishyvardhanb@compsci:~/530_2025_09_Course
+Branch: sunny-works
+Database: fall2025_530_conf_dev
+Start Command: node server.js
+Test Command: npm test
+API URL: http://localhost:5000
