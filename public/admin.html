@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Course Feedback Admin</title>
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+    <main class="panel panel--admin">
+        <header class="panel__header">
+            <div>
+                <p class="eyebrow">Admin dashboard</p>
+                <h1>Course Feedback</h1>
+            </div>
+            <a class="ghost" href="/">Back to tasks</a>
+        </header>
+
+        <section class="admin-controls">
+            <label for="courseFilter">Course filter</label>
+            <select id="courseFilter">
+                <option value="">All courses</option>
+            </select>
+            <button id="refreshBtn">Refresh</button>
+        </section>
+
+        <section class="admin-summary">
+            <div class="section-heading">
+                <h2>Feedback summary</h2>
+                <small id="summaryMeta" class="muted"></small>
+            </div>
+            <div id="summaryCards" class="summary-grid"></div>
+        </section>
+
+        <section>
+            <div class="section-heading">
+                <h2>Recent submissions</h2>
+                <small class="muted">Sorted by newest first</small>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Course</th>
+                            <th>Student</th>
+                            <th>Rating</th>
+                            <th>Comments</th>
+                            <th>Submitted</th>
+                        </tr>
+                    </thead>
+                    <tbody id="feedbackTable"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <div id="adminFeedbackMsg" class="feedback" aria-live="polite"></div>
+    </main>
+
+    <script>
+        const courseFilter = document.getElementById("courseFilter");
+        const summaryCards = document.getElementById("summaryCards");
+        const summaryMeta = document.getElementById("summaryMeta");
+        const feedbackTable = document.getElementById("feedbackTable");
+        const refreshBtn = document.getElementById("refreshBtn");
+        const adminFeedbackMsg = document.getElementById("adminFeedbackMsg");
+
+        const statusMessage = (msg, tone = "info") => {
+            adminFeedbackMsg.textContent = msg;
+            adminFeedbackMsg.dataset.tone = tone;
+        };
+
+        function renderSummary(summary) {
+            if (!summary.length) {
+                summaryCards.innerHTML = "<p class='muted'>No feedback yet.</p>";
+                summaryMeta.textContent = "";
+                return;
+            }
+
+            summaryMeta.textContent = `${summary.length} course${summary.length === 1 ? "" : "s"}`;
+            summaryCards.innerHTML = "";
+            summary.forEach(item => {
+                const card = document.createElement("article");
+                card.className = "summary-card";
+                card.innerHTML = `
+                    <div class="summary-card__head">
+                        <p class="eyebrow">${item.courseId}</p>
+                        <strong>${item.averageRating.toFixed(2)}</strong>
+                    </div>
+                    <p class="muted">Average rating (${item.totalResponses} responses)</p>
+                    <dl class="summary-card__distribution">
+                        ${Object.entries(item.ratingsBreakdown)
+                            .map(([rating, count]) => `<div><dt>${rating}★</dt><dd>${count}</dd></div>`)
+                            .join("")}
+                    </dl>
+                    <div class="summary-card__latest">
+                        ${item.latestFeedback
+                            .map(entry => `<p><strong>${entry.studentId}</strong>: ${entry.comments || "No comments"}</p>`)
+                            .join("")}
+                    </div>
+                `;
+                summaryCards.appendChild(card);
+            });
+        }
+
+        function populateFilter(summary) {
+            const existing = new Set([""]);
+            Array.from(courseFilter.options).forEach(option => existing.add(option.value));
+            summary.forEach(item => {
+                if (!existing.has(item.courseId)) {
+                    const option = document.createElement("option");
+                    option.value = item.courseId;
+                    option.textContent = item.courseId;
+                    courseFilter.appendChild(option);
+                }
+            });
+        }
+
+        function renderFeedbackRows(rows) {
+            if (!rows.length) {
+                feedbackTable.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="muted">No submissions for the selected course.</td>
+                    </tr>
+                `;
+                return;
+            }
+            feedbackTable.innerHTML = "";
+            rows.forEach(entry => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${entry.courseId}</td>
+                    <td>${entry.studentId}</td>
+                    <td>${entry.rating}</td>
+                    <td>${entry.comments || "—"}</td>
+                    <td>${new Date(entry.createdAt).toLocaleString()}</td>
+                `;
+                feedbackTable.appendChild(tr);
+            });
+        }
+
+        async function loadSummary() {
+            try {
+                const res = await fetch("/api/feedback/summary");
+                if (!res.ok) throw new Error();
+                const summary = await res.json();
+                renderSummary(summary);
+                populateFilter(summary);
+            } catch (err) {
+                console.error(err);
+                statusMessage("Could not load summary data", "error");
+            }
+        }
+
+        async function loadFeedback() {
+            const courseId = courseFilter.value;
+            const query = courseId ? `?courseId=${encodeURIComponent(courseId)}` : "";
+            try {
+                const res = await fetch(`/api/feedback${query}`);
+                if (!res.ok) throw new Error();
+                const rows = await res.json();
+                renderFeedbackRows(rows);
+                statusMessage("");
+            } catch (err) {
+                console.error(err);
+                statusMessage("Could not load submissions", "error");
+            }
+        }
+
+        refreshBtn.addEventListener("click", () => {
+            loadSummary();
+            loadFeedback();
+        });
+        courseFilter.addEventListener("change", loadFeedback);
+
+        loadSummary();
+        loadFeedback();
+    </script>
+</body>
+</html>

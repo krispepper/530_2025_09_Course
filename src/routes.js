@@ -1,104 +1,86 @@
 const express = require("express");
-const { ObjectId } = require("mongodb");
 const router = express.Router();
-const { getDB } = require("./db");
+const taskService = require("./services/taskService");
+const feedbackService = require("./services/courseFeedbackService");
+const { ServiceError } = require("./utils/serviceError");
 
-const VALID_STATUSES = new Set(["todo", "in-progress", "done"]);
-
-const normalizeTask = (task) => ({
-    _id: task._id?.toString(),
-    title: task.title,
-    status: task.status || "todo"
-});
+function handleError(res, err) {
+    if (err instanceof ServiceError) {
+        return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error(err);
+    return res.status(500).json({ error: "Database error" });
+}
 
 router.get("/tasks", async (req, res) => {
     try {
-        const db = getDB();
-        const tasks = await db.collection("tasks").find().toArray();
-        res.json(tasks.map(normalizeTask));
+        const tasks = await taskService.listTasks();
+        res.json(tasks);
     } catch (err) {
-        res.status(500).json({ error: "Database error" });
+        handleError(res, err);
     }
 });
 
 router.post("/tasks", async (req, res) => {
     try {
-        const { title, status = "todo" } = req.body || {};
-        if (!title || typeof title !== "string") {
-            return res.status(400).json({ error: "Title is required" });
-        }
-        if (!VALID_STATUSES.has(status)) {
-            return res.status(400).json({ error: "Invalid status" });
-        }
-
-        const db = getDB();
-        const result = await db.collection("tasks").insertOne({ title, status });
-        const created = await db.collection("tasks").findOne({ _id: result.insertedId });
-        res.status(201).json(normalizeTask(created));
+        const created = await taskService.createTask(req.body || {});
+        res.status(201).json(created);
     } catch (err) {
-        res.status(500).json({ error: "Database error" });
+        handleError(res, err);
     }
 });
 
 router.put("/tasks/:id", async (req, res) => {
-    const { id } = req.params;
-    const { title, status } = req.body || {};
-
-    if (!title && !status) {
-        return res.status(400).json({ error: "Nothing to update" });
-    }
-    if (status && !VALID_STATUSES.has(status)) {
-        return res.status(400).json({ error: "Invalid status" });
-    }
-
-    const filters = [];
-    if (ObjectId.isValid(id)) {
-        filters.push({ _id: new ObjectId(id) });
-    }
-    filters.push({ _id: id });
-
     try {
-        const db = getDB();
-        const updates = {};
-        if (title) updates.title = title;
-        if (status) updates.status = status;
-
-        const result = await db.collection("tasks").findOneAndUpdate(
-            { $or: filters },
-            { $set: updates },
-            { returnDocument: "after" }
-        );
-
-        // MongoDB driver v7 returns the document directly, older versions return { value, ... }
-        const updatedDoc = result?.value ?? result;
-        if (!updatedDoc) {
+        const updated = await taskService.updateTask(req.params.id, req.body || {});
+        if (!updated) {
             return res.status(404).json({ error: "Task not found" });
         }
-
-        res.json(normalizeTask(updatedDoc));
+        res.json(updated);
     } catch (err) {
-        res.status(500).json({ error: "Database error" });
+        handleError(res, err);
     }
 });
 
 router.delete("/tasks/:id", async (req, res) => {
-    const { id } = req.params;
-
-    const filters = [];
-    if (ObjectId.isValid(id)) {
-        filters.push({ _id: new ObjectId(id) });
-    }
-    filters.push({ _id: id });
-
     try {
-        const db = getDB();
-        const result = await db.collection("tasks").deleteOne({ $or: filters });
-        if (result.deletedCount === 0) {
+        const removed = await taskService.deleteTask(req.params.id);
+        if (!removed) {
             return res.status(404).json({ error: "Task not found" });
         }
         res.status(204).send();
     } catch (err) {
-        res.status(500).json({ error: "Database error" });
+        handleError(res, err);
+    }
+});
+
+router.post("/feedback", async (req, res) => {
+    try {
+        const created = await feedbackService.submitFeedback(req.body || {});
+        res.status(201).json(created);
+    } catch (err) {
+        handleError(res, err);
+    }
+});
+
+router.get("/feedback", async (req, res) => {
+    try {
+        const filters = {};
+        if (req.query?.courseId) filters.courseId = req.query.courseId;
+        if (req.query?.studentId) filters.studentId = req.query.studentId;
+        const feedback = await feedbackService.listFeedback(filters);
+        res.json(feedback);
+    } catch (err) {
+        handleError(res, err);
+    }
+});
+
+router.get("/feedback/summary", async (req, res) => {
+    try {
+        const summary = await feedbackService.getFeedbackSummary(req.query?.courseId);
+        res.json(summary);
+    } catch (err) {
+        handleError(res, err);
     }
 });
 
