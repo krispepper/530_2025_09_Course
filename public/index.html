@@ -1,183 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="UTF-8" />
-    <title>Team Sprint 1 Tasks</title>
-    <link rel="stylesheet" href="styles.css" />
-</head>
+    <title>Course Evaluation Portal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="header">
+        <div class="header-title">Course Evaluation Portal</div>
 
-<body>
-    <main class="panel">
-        <header class="panel__header">
-            <div>
-                <p class="eyebrow">Sprint board</p>
-                <h1>Group Tasks</h1>
-            </div>
-            <div class="panel__actions">
-                <div class="badge" id="taskCount">0 tasks</div>
-                <a class="ghost" href="/admin/feedback">Feedback admin</a>
-            </div>
-        </header>
+        <div class="header-user">
+          <span id="header-user">Not signed in</span>
+          <button id="logout-btn" class="logout-btn hidden">Logout</button>
+        </div>
+      </header>
 
-        <section class="form-row">
-            <input id="titleInput" type="text" placeholder="Add a task title..." />
-            <select id="statusInput">
-                <option value="todo">To do</option>
-                <option value="in-progress">In progress</option>
-                <option value="done">Done</option>
-            </select>
-            <button id="addBtn">Add task</button>
-        </section>
+      <div class="app-body">
+        <aside class="sidebar">
+          <nav class="nav">
+            <a href="/dashboard" data-link class="nav-link">Dashboard</a>
+            <a href="/evaluate" data-link class="nav-link">Evaluation Form</a>
+            <a href="/admin/reports" data-link class="nav-link">Admin Reports</a>
+          </nav>
+        </aside>
 
-        <ul id="taskList" class="task-list">Loading...</ul>
-        <div id="feedback" class="feedback" aria-live="polite"></div>
-    </main>
+        <main id="app-content" class="app-content"></main>
+      </div>
+    </div>
 
-    <script>
-        const taskList = document.getElementById("taskList");
-        const feedback = document.getElementById("feedback");
-        const titleInput = document.getElementById("titleInput");
-        const statusInput = document.getElementById("statusInput");
-        const taskCount = document.getElementById("taskCount");
-        const addBtn = document.getElementById("addBtn");
+    <div id="toast-root"></div>
+    <div id="modal-root"></div>
 
-        const statusLabels = {
-            "todo": "To do",
-            "in-progress": "In progress",
-            "done": "Done"
-        };
-
-        const showMessage = (msg, tone = "info") => {
-            feedback.textContent = msg;
-            feedback.dataset.tone = tone;
-            if (msg) setTimeout(() => (feedback.textContent = ""), 3500);
-        };
-
-        async function fetchTasks() {
-            taskList.innerHTML = "<li class='muted'>Loading...</li>";
-            try {
-                const res = await fetch("/api/tasks");
-                const tasks = await res.json();
-                renderTasks(tasks);
-            } catch {
-                taskList.innerHTML = "<li class='error'>Error loading tasks.</li>";
-            }
-        }
-
-        function renderTasks(tasks) {
-            taskList.innerHTML = "";
-            taskCount.textContent = `${tasks.length} ${tasks.length === 1 ? "task" : "tasks"}`;
-
-            if (!tasks.length) {
-                taskList.innerHTML = "<li class='muted'>No tasks yet.</li>";
-                return;
-            }
-
-            tasks.forEach(task => {
-                const li = document.createElement("li");
-                li.className = "task";
-                li.dataset.id = task._id;
-
-                const left = document.createElement("div");
-                left.className = "task__info";
-                left.innerHTML = `<p class="task__title">${task.title}</p>`;
-
-                const controls = document.createElement("div");
-                controls.className = "task__controls";
-
-                const select = document.createElement("select");
-                select.className = "task__status";
-                for (const value of Object.keys(statusLabels)) {
-                    const option = document.createElement("option");
-                    option.value = value;
-                    option.textContent = statusLabels[value];
-                    if (task.status === value) option.selected = true;
-                    select.appendChild(option);
-                }
-                select.addEventListener("change", () => updateTask(task._id, null, select.value));
-
-                const editBtn = document.createElement("button");
-                editBtn.className = "ghost";
-                editBtn.textContent = "Edit";
-                editBtn.addEventListener("click", () => promptEdit(task));
-
-                const deleteBtn = document.createElement("button");
-                deleteBtn.className = "ghost";
-                deleteBtn.textContent = "Delete";
-                deleteBtn.addEventListener("click", () => deleteTask(task._id));
-
-                controls.append(select, editBtn, deleteBtn);
-                li.append(left, controls);
-                taskList.appendChild(li);
-            });
-        }
-
-        async function addTask() {
-            const title = titleInput.value.trim();
-            const status = statusInput.value;
-            if (!title) {
-                showMessage("Please enter a title", "warn");
-                return;
-            }
-            try {
-                const res = await fetch("/api/tasks", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ title, status })
-                });
-                if (!res.ok) throw new Error();
-                titleInput.value = "";
-                statusInput.value = "todo";
-                showMessage("Task added");
-                await fetchTasks();
-            } catch {
-                showMessage("Could not add task", "error");
-            }
-        }
-
-        async function updateTask(id, title, status) {
-            try {
-                const res = await fetch(`/api/tasks/${id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ title, status })
-                });
-                if (!res.ok) throw new Error();
-                showMessage("Task updated");
-                await fetchTasks();
-            } catch {
-                showMessage("Update failed", "error");
-            }
-        }
-
-        async function promptEdit(task) {
-            const nextTitle = prompt("Update task title", task.title);
-            if (nextTitle === null) return;
-            const trimmed = nextTitle.trim();
-            if (!trimmed) {
-                showMessage("Title cannot be empty", "warn");
-                return;
-            }
-            await updateTask(task._id, trimmed, null);
-        }
-
-        async function deleteTask(id) {
-            try {
-                const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
-                if (!res.ok) throw new Error();
-                showMessage("Task deleted");
-                await fetchTasks();
-            } catch {
-                showMessage("Delete failed", "error");
-            }
-        }
-
-        addBtn.addEventListener("click", addTask);
-        titleInput.addEventListener("keyup", e => {
-            if (e.key === "Enter") addTask();
-        });
-
-        fetchTasks();
-    </script>
-</body>
+    <script type="module" src="/js/main.js"></script>
+  </body>
 </html>
