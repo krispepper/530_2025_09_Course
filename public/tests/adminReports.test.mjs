@@ -3,7 +3,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import { renderAdminReports } from "../js/pages/adminReports.js";
+
+global.fetch = async (url) => {
+  if (url.includes("/api/auth/me")) {
+    return {
+      ok: true,
+      json: async () => ({
+        user: { id: 1, role: "admin", name: "Test Admin" }
+      })
+    };
+  }
+
+  return {
+    ok: false,
+    json: async () => ({})
+  };
+};
+
+global.navigate = () => {};
+
+const { renderAdminReports } = await import("../js/pages/adminReports.js");
 
 function setupDom(url = "http://localhost/adminReports") {
   const dom = new JSDOM(
@@ -31,10 +50,9 @@ function setupDom(url = "http://localhost/adminReports") {
 /* ----------------------------------------------------
    TEST 1 — Admin Reports renders table + pagination
 ----------------------------------------------------- */
-test("Admin Reports - renders a table with pagination summary", () => {
-  const dom = setupDom();
-
-  renderAdminReports();
+test("Admin Reports - renders a table with pagination summary", async () => {
+  setupDom();
+  await renderAdminReports();
 
   const tableRegion = document.querySelector(".admin-table-region");
   assert.ok(tableRegion, "admin table region should exist");
@@ -47,36 +65,33 @@ test("Admin Reports - renders a table with pagination summary", () => {
 
   const summary = pagination.querySelector(".pagination-summary");
   assert.ok(summary, "pagination summary text should exist");
-  assert.ok(
-    summary.textContent.includes("Showing"),
-    "pagination summary should include 'Showing'"
-  );
+  assert.ok(summary.textContent.includes("Showing"));
 });
 
 /* ----------------------------------------------------
    TEST 2 — Filter chips update and Clear all resets them
 ----------------------------------------------------- */
-test("Admin Reports - filter chips reflect selections and Clear all resets them", () => {
+test("Admin Reports - filter chips reflect selections and Clear all resets them", async () => {
   const dom = setupDom();
-  renderAdminReports();
+  await renderAdminReports();
 
   const termSelect = document.getElementById("termFilter");
   const courseSelect = document.getElementById("courseFilter");
   const chipsRow = document.querySelector(".filter-chips-row");
   const clearBtn = document.querySelector(".btn-clear-filters");
 
-  assert.ok(termSelect, "term select should exist");
-  assert.ok(courseSelect, "course select should exist");
-  assert.ok(chipsRow, "filter chips row should exist");
-  assert.ok(clearBtn, "Clear all button should exist");
+  assert.ok(termSelect);
+  assert.ok(courseSelect);
+  assert.ok(chipsRow);
+  assert.ok(clearBtn);
 
-  assert.ok(
-    chipsRow.textContent.includes("No filters applied"),
-    "initial chips row should indicate no filters applied"
-  );
+  assert.ok(chipsRow.textContent.includes("No filters applied"));
 
   const termOptions = Array.from(termSelect.querySelectorAll("option"));
-  const firstRealTerm = termOptions.find((opt) => opt.value && opt.value.trim() !== "");
+  const firstRealTerm = termOptions.find(
+    (opt) => opt.value && opt.value.trim() !== ""
+  );
+
   if (firstRealTerm) {
     termSelect.value = firstRealTerm.value;
     termSelect.dispatchEvent(
@@ -86,45 +101,30 @@ test("Admin Reports - filter chips reflect selections and Clear all resets them"
 
   const chipsAfter = chipsRow.querySelectorAll(".filter-chip");
   if (firstRealTerm) {
-    assert.ok(
-      chipsAfter.length > 0,
-      "chips row should show at least one filter chip after term selection"
-    );
+    assert.ok(chipsAfter.length > 0);
   }
 
   clearBtn.dispatchEvent(
     new dom.window.MouseEvent("click", { bubbles: true })
   );
 
-  assert.ok(
-    chipsRow.textContent.includes("No filters applied"),
-    "chips row should reset to no filters applied after Clear all"
-  );
-
-  assert.equal(
-    termSelect.value,
-    "",
-    "term select should be reset after Clear all"
-  );
-  assert.equal(
-    courseSelect.value,
-    "",
-    "course select should be reset after Clear all"
-  );
+  assert.ok(chipsRow.textContent.includes("No filters applied"));
+  assert.equal(termSelect.value, "");
+  assert.equal(courseSelect.value, "");
 });
 
 /* ----------------------------------------------------
    TEST 3 — Clicking a row opens a modal with details
 ----------------------------------------------------- */
-test("Admin Reports - clicking a table row opens details modal", () => {
+test("Admin Reports - clicking a table row opens details modal", async () => {
   const dom = setupDom();
-  renderAdminReports();
+  await renderAdminReports();
 
   const table = document.querySelector(".admin-table-region table");
-  assert.ok(table, "table should exist for admin reports");
+  assert.ok(table);
 
   const firstRow = table.querySelector("tbody tr");
-  assert.ok(firstRow, "there should be at least one data row");
+  assert.ok(firstRow);
 
   firstRow.dispatchEvent(
     new dom.window.MouseEvent("click", { bubbles: true })
@@ -133,37 +133,36 @@ test("Admin Reports - clicking a table row opens details modal", () => {
   const backdrop = document.querySelector(".modal-backdrop");
   const modal = document.querySelector(".admin-report-modal");
 
-  assert.ok(backdrop, "modal backdrop should be added to DOM after row click");
-  assert.ok(modal, "admin report modal should be shown after row click");
+  assert.ok(backdrop);
+  assert.ok(modal);
 
   const title = modal.querySelector("h3");
-  assert.ok(title, "modal should have a title heading");
+  assert.ok(title);
 
   const cards = modal.querySelectorAll(".side-panel-card");
-  assert.ok(cards.length >= 1, "modal should contain at least one info card");
+  assert.ok(cards.length >= 1);
 
   const headingsText = Array.from(
     modal.querySelectorAll(".side-panel-card h4")
   ).map((h) => h.textContent);
 
   assert.ok(
-    headingsText.some((t) => t.includes("Response count")),
-    "modal should contain a 'Response count' section"
+    headingsText.some((t) => t.includes("Response count"))
   );
 });
 
 /* ----------------------------------------------------
    TEST 4 — Modal close button hides the modal
 ----------------------------------------------------- */
-test("Admin Reports - modal close button hides the modal", () => {
+test("Admin Reports - modal close button hides the modal", async () => {
   const dom = setupDom();
-  renderAdminReports();
+  await renderAdminReports();
 
   const table = document.querySelector(".admin-table-region table");
-  assert.ok(table, "table should exist for admin reports");
+  assert.ok(table);
 
   const firstRow = table.querySelector("tbody tr");
-  assert.ok(firstRow, "there should be at least one data row");
+  assert.ok(firstRow);
 
   firstRow.dispatchEvent(
     new dom.window.MouseEvent("click", { bubbles: true })
@@ -171,11 +170,12 @@ test("Admin Reports - modal close button hides the modal", () => {
 
   let backdrop = document.querySelector(".modal-backdrop");
   let modal = document.querySelector(".admin-report-modal");
-  assert.ok(backdrop, "modal backdrop should exist after row click");
-  assert.ok(modal, "modal should exist after row click");
+
+  assert.ok(backdrop);
+  assert.ok(modal);
 
   const closeBtn = modal.querySelector(".modal-close");
-  assert.ok(closeBtn, "modal close button should exist");
+  assert.ok(closeBtn);
 
   closeBtn.dispatchEvent(
     new dom.window.MouseEvent("click", { bubbles: true })
@@ -184,6 +184,6 @@ test("Admin Reports - modal close button hides the modal", () => {
   backdrop = document.querySelector(".modal-backdrop");
   modal = document.querySelector(".admin-report-modal");
 
-  assert.equal(backdrop, null, "modal backdrop should be removed after close");
-  assert.equal(modal, null, "modal should be removed after close");
+  assert.equal(backdrop, null);
+  assert.equal(modal, null);
 });

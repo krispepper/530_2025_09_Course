@@ -1,31 +1,18 @@
-﻿const { MongoClient } = require("mongodb");
+﻿const mongoose = require("mongoose");
 require("dotenv").config();
-
-const client = new MongoClient(process.env.MONGO_URI);
-let db;
 
 async function connectDB() {
   try {
-    await client.connect();
-    db = client.db();
-    console.log("MongoDB connected");
+    console.log("MONGO_URI:", process.env.MONGO_URI);
 
-    const feedback = db.collection("feedback");
-    const count = await feedback.countDocuments();
-    if (count === 0) {
-      await feedback.insertMany([
-        { courseId: "CS101", studentId: "s-001", rating: 5, comments: "Great intro course!", createdAt: new Date() },
-        { courseId: "CS201", studentId: "s-002", rating: 4, comments: "Challenging but rewarding.", createdAt: new Date() }
-      ]);
-    }
+    await mongoose.connect(process.env.MONGO_URI);
+
+    console.log("MongoDB Connected (Mongoose)");
+
   } catch (err) {
-    console.error("MongoDB connection error:", err);
+    console.error("MongoDB connection error:", err.message);
+    process.exit(1);
   }
 }
 
-function getDB() {
-  if (!db) throw new Error("Database not connected");
-  return db;
-}
-
-module.exports = { connectDB, getDB };
+module.exports = connectDB;

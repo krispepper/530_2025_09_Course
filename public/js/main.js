@@ -91,9 +91,7 @@ async function handleRouteChange() {
 
   if (!user && path !== "/login") {
     path = "/login";
-    if (getCurrentPath() !== path) {
-      window.history.replaceState({}, "", path);
-    }
+    window.history.replaceState({}, "", "/login");
   }
 
   if (user && path === "/login") {
@@ -130,9 +128,9 @@ async function handleRouteChange() {
   } else if (path.startsWith("/dashboard")) {
     renderDashboard(navigate);
   } else if (path.startsWith("/evaluate")) {
-    renderEvaluate();
+    renderEvaluate(navigate);   
   } else if (path.startsWith("/admin/reports")) {
-    renderAdminReports();
+    renderAdminReports(navigate); 
   } else {
     if (user) {
       const target = defaultPathForRole(user.role);

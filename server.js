@@ -1,34 +1,11 @@
-// server.js
-const dotenv = require('dotenv');
-const { connectDB } = require('./src/db');
-const app = require('./app');
+require("dotenv").config();
+const app = require("./app");
+const connectDB = require("./db");
 
-dotenv.config();
+const PORT = process.env.PORT || 5000;
 
-const PORT = process.env.PORT || 3000;
-
-(async () => {
-  let dbConnected = false;
-
-  try {
-    // Try to connect to MongoDB
-    await connectDB();
-    dbConnected = true;
-    console.log('✅ Connected to MongoDB');
-  } catch (err) {
-    // If MongoDB fails, continue without DB
-    console.error('⚠️ Could not connect to MongoDB. Running WITHOUT database.');
-    console.error(err.message || err);
-  }
-
-  // Optional: make this available in routes if needed
-  app.locals.dbConnected = dbConnected;
-
+connectDB().then(() => {
   app.listen(PORT, () => {
-    if (dbConnected) {
-      console.log(`🚀 Server running WITH DB on http://localhost:${PORT}`);
-    } else {
-      console.log(`🚀 Server running WITHOUT DB on http://localhost:${PORT}`);
-    }
+    console.log(`Server running on http://localhost:${PORT}`);
   });
-})();
+});

@@ -1,5 +1,9 @@
+/* Sohini Singaram */
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import { mockEnrollmentsForTest } from "./testData.js";
+import { mockEnrollmentsForTest } from "./testData.mjs";
 
 const dom = new JSDOM(`<!DOCTYPE html><body></body>`);
 global.window = dom.window;
@@ -27,6 +31,7 @@ function createTable(columns = [], data = []) {
   });
 
   thead.appendChild(headerRow);
+  table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
 
@@ -46,15 +51,15 @@ function createTable(columns = [], data = []) {
     tbody.appendChild(tr);
   });
 
-  table.appendChild(thead);
   table.appendChild(tbody);
   wrapper.appendChild(table);
   return wrapper;
 }
 
-function testDashboardTableRendersCorrectly() {
-  console.log("\n--- Running: Dashboard Table Rendering Test ---");
-
+/* ----------------------------------------------------
+   TEST — Dashboard Table Rendering
+----------------------------------------------------- */
+test("Dashboard Table - renders correct number of rows and values", () => {
   const columns = [
     { key: "course", label: "Course" },
     { key: "instructor", label: "Instructor" },
@@ -64,23 +69,17 @@ function testDashboardTableRendersCorrectly() {
 
   const table = createTable(columns, mockEnrollmentsForTest);
 
-  if (!table) {
-    console.error("FAIL: Table was not created.");
-    return;
-  }
+  assert.ok(table, "Table should be created");
 
   const rows = table.querySelectorAll("tbody tr");
-  if (rows.length !== mockEnrollmentsForTest.length) {
-    console.error(
-      `FAIL: Expected ${mockEnrollmentsForTest.length} rows, got ${rows.length}.`
-    );
-    return;
-  }
-  if (!table.innerHTML.includes("Introduction to Computer Science")) {
-    console.error("FAIL: Expected course name not found in table HTML.");
-    return;
-  }
+  assert.equal(
+    rows.length,
+    mockEnrollmentsForTest.length,
+    "Row count should match test data length"
+  );
 
-  console.log("PASS: Dashboard table rendered correctly.");
-}
-testDashboardTableRendersCorrectly();
+  assert.ok(
+    table.innerHTML.includes("Introduction to Computer Science"),
+    "Expected course name should appear in table"
+  );
+});

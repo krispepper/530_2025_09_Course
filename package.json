@@ -16,7 +16,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-session": "^1.18.2",
-    "jsdom": "^27.2.0",
+    "jsdom": "^22.1.0",
     "mongodb": "^7.0.0",
     "mongoose": "^9.0.0",
     "tr46": "^6.0.0",

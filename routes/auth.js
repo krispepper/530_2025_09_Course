@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const { isAuthenticated } = require("../middleware/auth");
 
 // @route   POST /api/auth/register
 router.post('/register', async (req, res) => {
@@ -95,7 +96,7 @@ router.post('/logout', (req, res) => {
 });
 
 // @route   GET /api/auth/me
-router.get('/me', (req, res) => {
+router.get('/me', isAuthenticated, (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({ message: 'Not authenticated' });
   }

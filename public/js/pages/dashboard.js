@@ -4,8 +4,15 @@ import { createCard } from "../components/card.js";
 import { createTable } from "../components/table.js";
 import { showToast } from "../components/toast.js";
 import { mockEnrollments } from "../data/mockEnrollments.js";
+import { authService } from "../services/authService.js";
 
-export function renderDashboard(navigate) {
+export async function renderDashboard(navigate) {
+  const user = await authService.getCurrentUser();
+
+  if (!user) {
+    navigate("/login");
+    return;
+  }
   const content = $("#app-content");
   content.innerHTML = "";
 

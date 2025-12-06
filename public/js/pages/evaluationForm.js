@@ -4,8 +4,15 @@ import { createRadioGroup } from "../components/radioGroup.js";
 import { createCard } from "../components/card.js";
 import { showModal } from "../components/modal.js";
 import { mockEnrollments } from "../data/mockEnrollments.js";
+import { authService } from "../services/authService.js";
 
-export function renderEvaluate() {
+export async function renderEvaluate() {
+  const user = await authService.getCurrentUser();
+
+  if (!user) {
+    navigate("/login");
+    return;
+  }
   const content = $("#app-content");
   content.innerHTML = "";
 

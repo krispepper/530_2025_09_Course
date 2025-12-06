@@ -3,8 +3,15 @@ import { createSelect } from "../components/select.js";
 import { createCard } from "../components/card.js";
 import { createTable } from "../components/table.js";
 import { mockEvaluationSummaries } from "../data/mockEvaluationSummaries.js";
+import { authService } from "../services/authService.js";
 
-export function renderAdminReports() {
+export async function renderAdminReports() {
+  const user = await authService.getCurrentUser();
+
+  if (!user || user.role !== "admin") {
+    navigate("/dashboard");
+    return;
+  }
   const content = $("#app-content");
   content.innerHTML = "";
 
