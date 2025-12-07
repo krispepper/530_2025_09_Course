@@ -72,7 +72,7 @@ async function handleRouteChange() {
   let path = getCurrentPath();
   const user = await authService.getCurrentUser();
 
-  updateHeaderUser(userdent);
+  updateHeaderUser(user);
   updateNavVisibility(user);
 
   if (path === "/") {
