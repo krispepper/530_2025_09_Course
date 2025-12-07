@@ -1,7 +1,9 @@
 import { authService } from "../services/authService.js";
 
 function defaultPathForRole(role) {
-  return role === "admin" ? "/admin/reports" : "/dashboard";
+  if (role === "admin") return "/admin/reports";
+  if (role === "instructor") return "/instructor/courses";
+  return "/dashboard";
 }
 
 export function renderLogin(navigate) {
@@ -12,6 +14,7 @@ export function renderLogin(navigate) {
     <div class="auth-page">
       <div class="auth-card-main">
         <h1>Course Evaluation Portal</h1>
+
         <div class="auth-toggle">
           <button class="auth-toggle-btn auth-toggle-btn-active" data-mode="login">
             Login
@@ -92,9 +95,7 @@ export function renderLogin(navigate) {
   const regErrorEl = document.getElementById("reg-error");
 
   function setMode(mode) {
-    const isLogin = mode === "login";
-
-    if (isLogin) {
+    if (mode === "login") {
       loginPanel.classList.remove("hidden");
       registerPanel.classList.add("hidden");
     } else {
@@ -103,20 +104,15 @@ export function renderLogin(navigate) {
     }
 
     toggleButtons.forEach((btn) => {
-      const btnMode = btn.getAttribute("data-mode");
-      if (btnMode === mode) {
-        btn.classList.add("auth-toggle-btn-active");
-      } else {
-        btn.classList.remove("auth-toggle-btn-active");
-      }
+      btn.classList.toggle(
+        "auth-toggle-btn-active",
+        btn.dataset.mode === mode
+      );
     });
   }
 
   toggleButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const mode = btn.getAttribute("data-mode");
-      setMode(mode);
-    });
+    btn.addEventListener("click", () => setMode(btn.dataset.mode));
   });
 
   document.getElementById("link-to-register").onclick = () => setMode("register");
@@ -139,7 +135,7 @@ export function renderLogin(navigate) {
     const email = document.getElementById("reg-email").value.trim();
     const password = document.getElementById("reg-password").value.trim();
     const role = document.getElementById("reg-role").value;
-    regErrorEl.style.color = "#b91c1c";
+
     regErrorEl.textContent = "";
 
     try {
@@ -148,6 +144,7 @@ export function renderLogin(navigate) {
       regErrorEl.textContent = `Registered ${user.email} as ${user.role}. You can login now.`;
       setTimeout(() => setMode("login"), 800);
     } catch (err) {
+      regErrorEl.style.color = "#b91c1c";
       regErrorEl.textContent = err.message;
     }
   };

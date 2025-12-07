@@ -1,9 +1,10 @@
-import { } from "./components/domUtils.js";
+import { renderLogin } from "./pages/login.js";
+import { authService } from "./services/authService.js";
 import { renderDashboard } from "./pages/dashboard.js";
 import { renderEvaluate } from "./pages/evaluationForm.js";
 import { renderAdminReports } from "./pages/adminReports.js";
-import { renderLogin } from "./pages/login.js";
-import { authService } from "./services/authService.js";
+import { renderInstructorCourses } from "./pages/instructorCourses.js";
+import { renderAdminEnrollment } from "./pages/adminEnrollment.js";
 
 function getCurrentPath() {
   const path = window.location.pathname || "/";
@@ -12,19 +13,8 @@ function getCurrentPath() {
 
 function defaultPathForRole(role) {
   if (role === "admin") return "/admin/reports";
+  if (role === "instructor") return "/instructor/courses";
   return "/dashboard";
-}
-
-function updateActiveNav(path) {
-  const links = document.querySelectorAll(".nav-link");
-  links.forEach((link) => {
-    const linkPath = link.getAttribute("href");
-    if (path.startsWith(linkPath)) {
-      link.classList.add("nav-link-active");
-    } else {
-      link.classList.remove("nav-link-active");
-    }
-  });
 }
 
 function updateHeaderUser(user) {
@@ -44,104 +34,91 @@ function updateHeaderUser(user) {
 function updateNavVisibility(user) {
   const dashboardLink = document.querySelector('a[href="/dashboard"]');
   const evalLink = document.querySelector('a[href="/evaluate"]');
-  const adminLink = document.querySelector('a[href="/admin/reports"]');
+  const adminReportsLink = document.querySelector('a[href="/admin/reports"]');
+  const adminEnrollLink = document.querySelector('a[href="/admin/enrollment"]');
+  const instructorLink = document.querySelector('a[href="/instructor/courses"]');
 
-  [dashboardLink, evalLink, adminLink].forEach((el) => {
-    if (el) el.style.display = "none";
-  });
+  [
+    dashboardLink,
+    evalLink,
+    adminReportsLink,
+    adminEnrollLink,
+    instructorLink
+  ].forEach(el => el && el.classList.add("hidden"));
 
   if (!user) return;
 
   if (user.role === "student") {
-    if (dashboardLink) dashboardLink.style.display = "block";
-  } else if (user.role === "instructor") {
-    if (dashboardLink) dashboardLink.style.display = "block";
-  } else if (user.role === "admin") {
-    if (adminLink) adminLink.style.display = "block";
+    dashboardLink?.classList.remove("hidden");
+    evalLink?.classList.remove("hidden");
+  }
+
+  if (user.role === "instructor") {
+    instructorLink?.classList.remove("hidden");
+  }
+
+  if (user.role === "admin") {
+    adminReportsLink?.classList.remove("hidden");
+    adminEnrollLink?.classList.remove("hidden");
   }
 }
 
 function navigate(path) {
-  const current = getCurrentPath();
-  if (current === path) {
-    handleRouteChange();
-    return;
-  }
   window.history.pushState({}, "", path);
   handleRouteChange();
 }
 
 async function handleRouteChange() {
   let path = getCurrentPath();
-
   const user = await authService.getCurrentUser();
-  updateHeaderUser(user);
+
+  updateHeaderUser(userdent);
   updateNavVisibility(user);
 
   if (path === "/") {
-    if (!user) {
-      path = "/login";
-    } else {
-      path = defaultPathForRole(user.role);
-    }
-    if (getCurrentPath() !== path) {
-      window.history.replaceState({}, "", path);
-    }
+    path = user ? defaultPathForRole(user.role) : "/login";
+    window.history.replaceState({}, "", path);
   }
 
   if (!user && path !== "/login") {
-    path = "/login";
     window.history.replaceState({}, "", "/login");
+    renderLogin(navigate);
+    return;
   }
 
   if (user && path === "/login") {
-    const target = defaultPathForRole(user.role);
-    if (getCurrentPath() !== target) {
-      window.history.replaceState({}, "", target);
-    }
-    path = target;
+    path = defaultPathForRole(user.role);
+    window.history.replaceState({}, "", path);
   }
-
-  if (user) {
-    if (path.startsWith("/admin/reports") && user.role !== "admin") {
-      const target = defaultPathForRole(user.role);
-      if (getCurrentPath() !== target) {
-        window.history.replaceState({}, "", target);
-      }
-      path = target;
-    }
-
-    if (path.startsWith("/evaluate") && user.role !== "student") {
-      const target = defaultPathForRole(user.role);
-      if (getCurrentPath() !== target) {
-        window.history.replaceState({}, "", target);
-      }
-      path = target;
-    }
-  }
-
-  path = getCurrentPath();
-  updateActiveNav(path);
 
   if (path === "/login") {
     renderLogin(navigate);
-  } else if (path.startsWith("/dashboard")) {
+  } 
+  else if (path.startsWith("/dashboard")) {
     renderDashboard(navigate);
-  } else if (path.startsWith("/evaluate")) {
-    renderEvaluate(navigate);   
-  } else if (path.startsWith("/admin/reports")) {
-    renderAdminReports(navigate); 
-  } else {
+  } 
+  else if (path.startsWith("/evaluate")) {
+    renderEvaluate(navigate);
+  }
+  else if (path.startsWith("/admin/reports")) {
+    renderAdminReports(navigate);
+  }
+  else if (path.startsWith("/admin/enrollment")) {
+    renderAdminEnrollment(navigate);
+  }
+  else if (path.startsWith("/instructor/courses")) {
+    renderInstructorCourses(navigate);
+  }
+  else {
     if (user) {
       const target = defaultPathForRole(user.role);
-      if (getCurrentPath() !== target) {
-        window.history.replaceState({}, "", target);
-      }
-      renderDashboard(navigate);
+      window.history.replaceState({}, "", target);
+
+      if (user.role === "admin") renderAdminReports(navigate);
+      else if (user.role === "instructor") renderInstructorCourses(navigate);
+      else renderDashboard(navigate);
     } else {
-      if (getCurrentPath() !== "/login") {
-        window.history.replaceState({}, "", "/login");
-      }
+      window.history.replaceState({}, "", "/login");
       renderLogin(navigate);
     }
   }
@@ -159,9 +136,7 @@ function initNavigationLinks() {
     }
   });
 
-  window.addEventListener("popstate", () => {
-    handleRouteChange();
-  });
+  window.addEventListener("popstate", handleRouteChange);
 }
 
 function initLogoutButton() {

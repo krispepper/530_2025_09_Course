@@ -2,8 +2,10 @@
 const path = require("path");
 const session = require("express-session");
 const cors = require("cors");
+
 const feedbackRoutes = require("./routes/feedback");
 const authRoutes = require("./routes/auth");
+const courseRoutes = require("./routes/course");
 
 const app = express();
 
@@ -33,10 +35,19 @@ app.use(
 
 app.use("/api", feedbackRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/courses", courseRoutes);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const spaPaths = ["/", "/login", "/dashboard", "/evaluate", "/admin/reports"];
+const spaPaths = [
+  "/",
+  "/login",
+  "/dashboard",
+  "/evaluate",
+  "/admin/reports",
+  "/admin/enrollment",
+  "/instructor/courses"
+];
 
 spaPaths.forEach((routePath) => {
   app.get(routePath, (req, res) => {
