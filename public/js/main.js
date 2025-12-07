@@ -17,10 +17,20 @@ function defaultPathForRole(role) {
   return "/dashboard";
 }
 
+function updateActiveNav(path) {
+  const links = document.querySelectorAll(".nav-link");
+  links.forEach((link) => {
+    if (link.getAttribute("href") === path) {
+      link.classList.add("nav-link-active");
+    } else {
+      link.classList.remove("nav-link-active");
+    }
+  });
+}
+
 function updateHeaderUser(user) {
   const userEl = document.getElementById("header-user");
   const logoutBtn = document.getElementById("logout-btn");
-  if (!userEl || !logoutBtn) return;
 
   if (!user) {
     userEl.textContent = "Not signed in";
@@ -34,8 +44,10 @@ function updateHeaderUser(user) {
 function updateNavVisibility(user) {
   const dashboardLink = document.querySelector('a[href="/dashboard"]');
   const evalLink = document.querySelector('a[href="/evaluate"]');
+
   const adminReportsLink = document.querySelector('a[href="/admin/reports"]');
   const adminEnrollLink = document.querySelector('a[href="/admin/enrollment"]');
+
   const instructorLink = document.querySelector('a[href="/instructor/courses"]');
 
   [
@@ -44,13 +56,14 @@ function updateNavVisibility(user) {
     adminReportsLink,
     adminEnrollLink,
     instructorLink
-  ].forEach(el => el && el.classList.add("hidden"));
+  ].forEach((el) => {
+    if (el) el.classList.add("hidden");
+  });
 
   if (!user) return;
 
   if (user.role === "student") {
     dashboardLink?.classList.remove("hidden");
-    evalLink?.classList.remove("hidden");
   }
 
   if (user.role === "instructor") {
@@ -76,52 +89,34 @@ async function handleRouteChange() {
   updateNavVisibility(user);
 
   if (path === "/") {
-    path = user ? defaultPathForRole(user.role) : "/login";
-    window.history.replaceState({}, "", path);
+    if (!user) {
+      navigate("/login");
+      return;
+    } else {
+      navigate(defaultPathForRole(user.role));
+      return;
+    }
   }
 
   if (!user && path !== "/login") {
-    window.history.replaceState({}, "", "/login");
-    renderLogin(navigate);
+    navigate("/login");
     return;
   }
 
   if (user && path === "/login") {
-    path = defaultPathForRole(user.role);
-    window.history.replaceState({}, "", path);
+    navigate(defaultPathForRole(user.role));
+    return;
   }
 
-  if (path === "/login") {
-    renderLogin(navigate);
-  } 
-  else if (path.startsWith("/dashboard")) {
-    renderDashboard(navigate);
-  } 
-  else if (path.startsWith("/evaluate")) {
-    renderEvaluate(navigate);
-  }
-  else if (path.startsWith("/admin/reports")) {
-    renderAdminReports(navigate);
-  }
-  else if (path.startsWith("/admin/enrollment")) {
-    renderAdminEnrollment(navigate);
-  }
-  else if (path.startsWith("/instructor/courses")) {
-    renderInstructorCourses(navigate);
-  }
-  else {
-    if (user) {
-      const target = defaultPathForRole(user.role);
-      window.history.replaceState({}, "", target);
+  updateActiveNav(path);
 
-      if (user.role === "admin") renderAdminReports(navigate);
-      else if (user.role === "instructor") renderInstructorCourses(navigate);
-      else renderDashboard(navigate);
-    } else {
-      window.history.replaceState({}, "", "/login");
-      renderLogin(navigate);
-    }
-  }
+  if (path === "/login") renderLogin(navigate);
+  else if (path === "/dashboard") renderDashboard(navigate);
+  else if (path === "/evaluate") renderEvaluate(navigate);
+  else if (path === "/admin/reports") renderAdminReports(navigate);
+  else if (path === "/admin/enrollment") renderAdminEnrollment(navigate);
+  else if (path === "/instructor/courses") renderInstructorCourses(navigate);
+  else navigate(defaultPathForRole(user?.role || "student"));
 }
 
 function initNavigationLinks() {
@@ -129,11 +124,8 @@ function initNavigationLinks() {
     const target = event.target.closest("a[data-link]");
     if (!target) return;
 
-    const href = target.getAttribute("href");
-    if (href && href.startsWith("/")) {
-      event.preventDefault();
-      navigate(href);
-    }
+    event.preventDefault();
+    navigate(target.getAttribute("href"));
   });
 
   window.addEventListener("popstate", handleRouteChange);
@@ -141,9 +133,7 @@ function initNavigationLinks() {
 
 function initLogoutButton() {
   const logoutBtn = document.getElementById("logout-btn");
-  if (!logoutBtn) return;
-
-  logoutBtn.addEventListener("click", async () => {
+  logoutBtn?.addEventListener("click", async () => {
     await authService.logout();
     navigate("/login");
   });
