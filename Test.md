@@ -19,8 +19,8 @@
 ```
 
    Expected output:
-   - "🚀 Server running on http://localhost:5000"
-   - "✅ MongoDB Connected Successfully"
+   - "Server running on http://localhost:5000"
+   - "MongoDB Connected Successfully"
 
 ## Testing Options
 
