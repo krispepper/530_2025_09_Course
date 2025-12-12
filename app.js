@@ -6,6 +6,7 @@ const cors = require("cors");
 const feedbackRoutes = require("./routes/feedback");
 const authRoutes = require("./routes/auth");
 const courseRoutes = require("./routes/course");
+const evaluationRoutes = require("./routes/evaluation");
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use(
 app.use("/api", feedbackRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/courses", courseRoutes);
+app.use("/api/evaluations", evaluationRoutes);
 
 app.use(express.static(path.join(__dirname, "public")));
 

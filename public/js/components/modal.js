@@ -1,36 +1,43 @@
-import { $, createElement } from "./domUtils.js";
-import { createButton } from "./button.js";
+import { createElement } from "./domUtils.js";
 
-export function showModal(title, message) {
-  const root = $("#modal-root");
-  root.innerHTML = "";
+let modalRoot = null;
 
-  const backdrop = createElement("div", "modal-backdrop");
-  const modal = createElement("div", "modal");
+function ensureModalRoot() {
+  if (modalRoot) return modalRoot;
 
-  const header = createElement("div", "modal-header");
-  const h3 = createElement("h3", null, title);
-  const closeBtn = createElement("button", "modal-close", "×");
-  closeBtn.addEventListener("click", closeModal);
+  modalRoot = document.createElement("div");
+  modalRoot.id = "app-modal-root";
+  document.body.appendChild(modalRoot);
 
-  header.appendChild(h3);
-  header.appendChild(closeBtn);
-
-  const body = createElement("div", "modal-body", message);
-
-  const footer = createElement("div", "modal-footer");
-  const closeButton = createButton("Close", "secondary", closeModal);
-  footer.appendChild(closeButton);
-
-  modal.appendChild(header);
-  modal.appendChild(body);
-  modal.appendChild(footer);
-  backdrop.appendChild(modal);
-  root.appendChild(backdrop);
+  return modalRoot;
 }
 
-export function closeModal() {
-  const root = $("#modal-root");
-  if (root) root.innerHTML = "";
-  window.location.href = "/dashboard";
+export function showModal(title, message) {
+  const root = ensureModalRoot();
+  root.innerHTML = "";
+
+  const overlay = createElement("div", "modal-overlay");
+  const dialog = createElement("div", "modal-dialog");
+
+  const h = createElement("h3", "modal-title", title || "Message");
+  const p = createElement("p", "modal-message", message || "");
+
+  const actions = createElement("div", "modal-actions");
+  const closeBtn = createElement("button", "btn btn-primary", "OK");
+
+  closeBtn.addEventListener("click", () => {
+    root.innerHTML = "";
+  });
+
+  overlay.addEventListener("click", () => {
+    root.innerHTML = "";
+  });
+  dialog.addEventListener("click", (e) => e.stopPropagation());
+
+  actions.appendChild(closeBtn);
+  dialog.appendChild(h);
+  dialog.appendChild(p);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+  root.appendChild(overlay);
 }

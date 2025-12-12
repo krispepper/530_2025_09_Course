@@ -1,438 +1,393 @@
-const express = require('express');
+const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
-const Evaluation = require('../models/Evaluation');
-const Response = require('../models/Response');
-const Course = require('../models/Course');
-const { isAuthenticated, hasRole } = require('../middleware/auth');
 
-// Create a new evaluation
-// @access  Instructor, Admin only
-router.post('/', isAuthenticated, hasRole('instructor', 'admin'), async (req, res) => {
+const Evaluation = require("../models/Evaluation");
+const Response = require("../models/Response");
+const Course = require("../models/Course");
+const { isAuthenticated, hasRole } = require("../middleware/auth");
+
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+
+/**
+ * POST /api/evaluations
+ * Create evaluation (Instructor/Admin)  ✅ required by UAT tests
+ */
+router.post("/", isAuthenticated, hasRole("instructor", "admin"), async (req, res) => {
   try {
     const { title, courseId, evaluationType, questions, startDate, endDate } = req.body;
 
-    // Validate required fields
     if (!title || !courseId || !evaluationType || !questions || !startDate || !endDate) {
-      return res.status(400).json({ 
-        message: 'Please provide all required fields: title, courseId, evaluationType, questions, startDate, endDate' 
+      return res.status(400).json({
+        message:
+          "Please provide all required fields: title, courseId, evaluationType, questions, startDate, endDate"
       });
     }
 
-    // Validate evaluation type
-    if (!['open', 'anonymous'].includes(evaluationType)) {
+    if (!isValidObjectId(courseId)) return res.status(400).json({ message: "Invalid courseId" });
+
+    if (!["open", "anonymous"].includes(evaluationType)) {
       return res.status(400).json({ message: 'Evaluation type must be either "open" or "anonymous"' });
     }
 
-    // Validate questions array
     if (!Array.isArray(questions) || questions.length === 0) {
-      return res.status(400).json({ message: 'At least one question is required' });
+      return res.status(400).json({ message: "At least one question is required" });
     }
 
-    // Check if course exists
     const course = await Course.findById(courseId);
-    if (!course) {
-      return res.status(404).json({ message: 'Course not found' });
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    // Instructor can create only for own course (admin can create for any)
+    if (req.session.userRole === "instructor" && String(course.instructor) !== String(req.session.userId)) {
+      return res.status(403).json({ message: "You can only create evaluations for your own courses" });
     }
 
-    // Check if instructor owns this course (or if admin)
-    if (req.session.userRole === 'instructor' && course.instructor.toString() !== req.session.userId) {
-      return res.status(403).json({ message: 'You can only create evaluations for your own courses' });
-    }
-
-    // Validate dates
     const start = new Date(startDate);
     const end = new Date(endDate);
-    
+
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      return res.status(400).json({ message: 'Invalid date format' });
+      return res.status(400).json({ message: "Invalid date format" });
     }
+    if (end <= start) return res.status(400).json({ message: "End date must be after start date" });
 
-    if (end <= start) {
-      return res.status(400).json({ message: 'End date must be after start date' });
-    }
-
-    // Create evaluation
     const evaluation = new Evaluation({
       title,
       course: courseId,
       instructor: req.session.userId,
       evaluationType,
-      questions: questions.map(q => ({
+      questions: questions.map((q) => ({
         questionText: q.questionText,
         questionType: q.questionType,
         isRequired: q.isRequired !== undefined ? q.isRequired : true
       })),
       startDate: start,
       endDate: end,
-      status: 'active'
+      status: "active",
+      isActive: true
     });
 
     await evaluation.save();
-    await evaluation.populate('course', 'courseName courseCode');
-    await evaluation.populate('instructor', 'email role');
+    await evaluation.populate("course", "courseName courseCode");
+    await evaluation.populate("instructor", "email role");
 
-    res.status(201).json({
-      message: 'Evaluation created successfully',
+    return res.status(201).json({
+      message: "Evaluation created successfully",
       evaluation
     });
-
-  } catch (error) {
-    console.error('Create Evaluation Error:', error);
-    res.status(500).json({ message: 'Server error while creating evaluation' });
+  } catch (err) {
+    console.error("Create Evaluation Error:", err);
+    return res.status(500).json({ message: "Server error while creating evaluation" });
   }
 });
 
-// Get evaluations based on user role
-// @access  Authenticated users
-router.get('/', isAuthenticated, async (req, res) => {
+/**
+ * GET /api/evaluations
+ * Role-based list ✅ required by UAT tests
+ */
+router.get("/", isAuthenticated, async (req, res) => {
   try {
-    let evaluations;
+    let evaluations = [];
 
-    if (req.session.userRole === 'student') {
-      // Students see evaluations for courses they're enrolled in
-      const enrolledCourses = await Course.find({ students: req.session.userId }).select('_id');
-      const courseIds = enrolledCourses.map(c => c._id);
+    if (req.session.userRole === "student") {
+      const enrolledCourses = await Course.find({ students: req.session.userId }).select("_id");
+      const courseIds = enrolledCourses.map((c) => c._id);
 
-      evaluations = await Evaluation.find({ 
-        course: { $in: courseIds },
-        isActive: true
-      })
-        .populate('course', 'courseName courseCode')
-        .populate('instructor', 'email role')
+      evaluations = await Evaluation.find({ course: { $in: courseIds }, isActive: true })
+        .populate("course", "courseName courseCode")
+        .populate("instructor", "email role")
         .sort({ createdAt: -1 });
 
-    } else if (req.session.userRole === 'instructor') {
-      // Instructors see only their evaluations
-      evaluations = await Evaluation.find({ instructor: req.session.userId })
-        .populate('course', 'courseName courseCode')
-        .populate('instructor', 'email role')
-        .sort({ createdAt: -1 });
-
-    } else {
-      // Admins see all evaluations
-      evaluations = await Evaluation.find()
-        .populate('course', 'courseName courseCode')
-        .populate('instructor', 'email role')
-        .sort({ createdAt: -1 });
-    }
-
-    // For students, also check if they've already submitted
-    if (req.session.userRole === 'student') {
+      // attach hasSubmitted + isOpen
       const evaluationsWithStatus = await Promise.all(
-        evaluations.map(async (evaluation) => {
-          const response = await Response.findOne({
-            evaluation: eval._id,
-            student: req.session.userId
-          });
-
+        evaluations.map(async (ev) => {
+          const existing = await Response.findOne({ evaluation: ev._id, submittedBy: req.session.userId });
           return {
-            ...eval.toObject(),
-            hasSubmitted: !!response,
-            isOpen: new Date() >= eval.startDate && new Date() <= eval.endDate
+            ...ev.toObject(),
+            hasSubmitted: !!existing,
+            isOpen: new Date() >= ev.startDate && new Date() <= ev.endDate
           };
         })
       );
 
-      return res.json({
-        count: evaluationsWithStatus.length,
-        evaluations: evaluationsWithStatus
-      });
+      return res.json({ count: evaluationsWithStatus.length, evaluations: evaluationsWithStatus });
     }
 
-    res.json({
-      count: evaluations.length,
-      evaluations
-    });
+    if (req.session.userRole === "instructor") {
+      evaluations = await Evaluation.find({ instructor: req.session.userId })
+        .populate("course", "courseName courseCode")
+        .populate("instructor", "email role")
+        .sort({ createdAt: -1 });
+    } else {
+      evaluations = await Evaluation.find()
+        .populate("course", "courseName courseCode")
+        .populate("instructor", "email role")
+        .sort({ createdAt: -1 });
+    }
 
-  } catch (error) {
-    console.error('Get Evaluations Error:', error);
-    res.status(500).json({ message: 'Server error while fetching evaluations' });
+    return res.json({ count: evaluations.length, evaluations });
+  } catch (err) {
+    console.error("Get Evaluations Error:", err);
+    return res.status(500).json({ message: "Server error while fetching evaluations" });
   }
 });
 
-//Get single evaluation by ID
-// @access  Authenticated users
-router.get('/:id', isAuthenticated, async (req, res) => {
+/**
+ * POST /api/evaluations/ensure
+ * Student: create default evaluation if missing (your feature) ✅
+ * Also includes Option B (update questions if no responses exist yet)
+ */
+router.post("/ensure", isAuthenticated, hasRole("student"), async (req, res) => {
   try {
-    const evaluation = await Evaluation.findById(req.params.id)
-      .populate('course', 'courseName courseCode')
-      .populate('instructor', 'email role');
+    const { courseId } = req.body;
 
-    if (!evaluation) {
-      return res.status(404).json({ message: 'Evaluation not found' });
+    if (!courseId || !isValidObjectId(courseId)) {
+      return res.status(400).json({ message: "Valid courseId is required" });
     }
 
-    // Check if student has access (must be enrolled in course)
-    if (req.session.userRole === 'student') {
-      const course = await Course.findById(evaluation.course._id);
-      if (!course.students.includes(req.session.userId)) {
-        return res.status(403).json({ message: 'You are not enrolled in this course' });
+    const course = await Course.findById(courseId).populate("instructor", "email role");
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    const enrolled = course.students.map(String).includes(String(req.session.userId));
+    if (!enrolled) return res.status(403).json({ message: "You are not enrolled in this course" });
+
+    const defaultQuestions = [
+      { questionText: "The course content was well organized.", questionType: "rating", isRequired: true },
+      { questionText: "The instructor clearly explained course concepts.", questionType: "rating", isRequired: true },
+      { questionText: "The pace of the course was appropriate.", questionType: "rating", isRequired: true },
+      { questionText: "Feedback on assignments helped me improve my learning.", questionType: "rating", isRequired: true },
+      { questionText: "Overall, I would recommend this course to other students.", questionType: "rating", isRequired: true },
+      { questionText: "The grading criteria and expectations were clear.", questionType: "rating", isRequired: true },
+      { questionText: "Class activities and discussions helped me stay engaged.", questionType: "rating", isRequired: true },
+      { questionText: "The instructor encouraged student participation and questions.", questionType: "rating", isRequired: true },
+      { questionText: "The course materials supported my learning effectively.", questionType: "rating", isRequired: true },
+      { questionText: "Online resources/tools were easy to access and use.", questionType: "rating", isRequired: true },
+      { questionText: "What worked well in this course?", questionType: "text", isRequired: true },
+      { questionText: "What could be improved for future students?", questionType: "text", isRequired: true }
+    ];
+
+    let evaluation = await Evaluation.findOne({ course: courseId, isActive: true }).sort({ createdAt: -1 });
+
+    if (!evaluation) {
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(startDate.getDate() + 30);
+
+      evaluation = new Evaluation({
+        title: `Course Evaluation - ${course.courseName}`,
+        course: courseId,
+        instructor: course.instructor?._id || course.instructor,
+        evaluationType: "open",
+        questions: defaultQuestions,
+        startDate,
+        endDate,
+        status: "active",
+        isActive: true
+      });
+
+      await evaluation.save();
+    } else {
+      const anyResponses = await Response.exists({ evaluation: evaluation._id });
+      if (!anyResponses) {
+        evaluation.questions = defaultQuestions;
+        await evaluation.save();
       }
-
-      // Check if already submitted
-      const response = await Response.findOne({
-        evaluation: evaluation._id,
-        student: req.session.userId
-      });
-
-      return res.json({
-        evaluation,
-        hasSubmitted: !!response,
-        isOpen: new Date() >= evaluation.startDate && new Date() <= evaluation.endDate
-      });
     }
 
-    res.json({ evaluation });
-
-  } catch (error) {
-    console.error('Get Evaluation Error:', error);
-    if (error.kind === 'ObjectId') {
-      return res.status(404).json({ message: 'Evaluation not found' });
-    }
-    res.status(500).json({ message: 'Server error while fetching evaluation' });
-  }
-});
-
-// Update evaluation
-// @access  Instructor (own evaluation), Admin
-router.put('/:id', isAuthenticated, hasRole('instructor', 'admin'), async (req, res) => {
-  try {
-    const evaluation = await Evaluation.findById(req.params.id);
-
-    if (!evaluation) {
-      return res.status(404).json({ message: 'Evaluation not found' });
-    }
-
-    // Check if instructor owns this evaluation (or if admin)
-    if (req.session.userRole === 'instructor' && evaluation.instructor.toString() !== req.session.userId) {
-      return res.status(403).json({ message: 'You can only update your own evaluations' });
-    }
-
-    const { title, questions, startDate, endDate, status } = req.body;
-
-    // Update fields
-    if (title) evaluation.title = title;
-    if (questions) {
-      evaluation.questions = questions.map(q => ({
-        questionText: q.questionText,
-        questionType: q.questionType,
-        isRequired: q.isRequired !== undefined ? q.isRequired : true
-      }));
-    }
-    if (startDate) evaluation.startDate = new Date(startDate);
-    if (endDate) evaluation.endDate = new Date(endDate);
-    if (status) evaluation.status = status;
-
-    await evaluation.save();
-    await evaluation.populate('course', 'courseName courseCode');
-    await evaluation.populate('instructor', 'email role');
-
-    res.json({
-      message: 'Evaluation updated successfully',
-      evaluation
+    const existing = await Response.findOne({
+      evaluation: evaluation._id,
+      submittedBy: req.session.userId
     });
 
-  } catch (error) {
-    console.error('Update Evaluation Error:', error);
-    res.status(500).json({ message: 'Server error while updating evaluation' });
+    return res.json({
+      evaluationId: evaluation._id,
+      hasSubmitted: !!existing
+    });
+  } catch (err) {
+    console.error("Ensure evaluation error:", err);
+    return res.status(500).json({ message: "Failed to create evaluation" });
   }
 });
 
-// Delete evaluation
-// @access  Instructor (own evaluation), Admin
-router.delete('/:id', isAuthenticated, hasRole('instructor', 'admin'), async (req, res) => {
+/**
+ * GET /api/evaluations/:id
+ */
+router.get("/:id", isAuthenticated, async (req, res) => {
   try {
-    const evaluation = await Evaluation.findById(req.params.id);
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ message: "Invalid evaluation id" });
 
-    if (!evaluation) {
-      return res.status(404).json({ message: 'Evaluation not found' });
-    }
+    const evaluation = await Evaluation.findById(id)
+      .populate("course", "courseName courseCode")
+      .populate("instructor", "email role");
 
-    // Check if instructor owns this evaluation (or if admin)
-    if (req.session.userRole === 'instructor' && evaluation.instructor.toString() !== req.session.userId) {
-      return res.status(403).json({ message: 'You can only delete your own evaluations' });
-    }
+    if (!evaluation) return res.status(404).json({ message: "Evaluation not found" });
 
-    // Delete all responses for this evaluation
-    await Response.deleteMany({ evaluation: req.params.id });
-
-    // Delete evaluation
-    await Evaluation.findByIdAndDelete(req.params.id);
-
-    res.json({ message: 'Evaluation and all associated responses deleted successfully' });
-
-  } catch (error) {
-    console.error('Delete Evaluation Error:', error);
-    res.status(500).json({ message: 'Server error while deleting evaluation' });
+    return res.json({ evaluation });
+  } catch (err) {
+    console.error("Get evaluation error:", err);
+    return res.status(500).json({ message: "Server error while fetching evaluation" });
   }
 });
 
-// Submit evaluation response
-// @access  Students only
-router.post('/:id/submit', isAuthenticated, hasRole('student'), async (req, res) => {
+/**
+ * POST /api/evaluations/:id/submit
+ */
+router.post("/:id/submit", isAuthenticated, hasRole("student"), async (req, res) => {
   try {
+    if (!req.session?.userId) {
+      return res.status(401).json({ message: "Session missing userId. Please login again." });
+    }
+
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ message: "Invalid evaluation id" });
+
     const { answers } = req.body;
-
     if (!answers || !Array.isArray(answers) || answers.length === 0) {
-      return res.status(400).json({ message: 'Please provide answers to the evaluation' });
+      return res.status(400).json({ message: "Please provide answers to the evaluation" });
     }
 
-    // Get evaluation
-    const evaluation = await Evaluation.findById(req.params.id);
-    if (!evaluation) {
-      return res.status(404).json({ message: 'Evaluation not found' });
-    }
+    const evaluation = await Evaluation.findById(id);
+    if (!evaluation) return res.status(404).json({ message: "Evaluation not found" });
 
-    // Check if evaluation is active
-    if (evaluation.status !== 'active') {
-      return res.status(400).json({ message: 'This evaluation is closed' });
-    }
-
-    // Check if within date range
     const now = new Date();
+    if (evaluation.status !== "active") return res.status(400).json({ message: "This evaluation is closed" });
     if (now < evaluation.startDate || now > evaluation.endDate) {
-      return res.status(400).json({ message: 'This evaluation is not currently open for submissions' });
+      return res.status(400).json({ message: "This evaluation is not currently open for submissions" });
     }
 
-    // Check if student is enrolled in the course
     const course = await Course.findById(evaluation.course);
-    if (!course.students.includes(req.session.userId)) {
-      return res.status(403).json({ message: 'You are not enrolled in this course' });
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    const enrolled = course.students.map(String).includes(String(req.session.userId));
+    if (!enrolled) return res.status(403).json({ message: "You are not enrolled in this course" });
+
+    const existing = await Response.findOne({ evaluation: id, submittedBy: req.session.userId });
+    if (existing) {
+      return res.status(400).json({ message: "You have already submitted a response for this evaluation" });
     }
 
-    // Check if student has already submitted (for non-anonymous or open evaluations)
-    const existingResponse = await Response.findOne({
-      evaluation: req.params.id,
-      student: req.session.userId
-    });
-
-    if (existingResponse) {
-      return res.status(400).json({ message: 'You have already submitted a response for this evaluation' });
-    }
-
-    // Validate all required questions are answered
-    const requiredQuestions = evaluation.questions.filter(q => q.isRequired);
-    for (const question of requiredQuestions) {
-      const answer = answers.find(a => a.questionId === question._id.toString());
-      if (!answer || !answer.answerValue || answer.answerValue.trim() === '') {
-        return res.status(400).json({ 
-          message: `Please answer the required question: "${question.questionText}"` 
-        });
+    const requiredQuestions = evaluation.questions.filter((q) => q.isRequired);
+    for (const q of requiredQuestions) {
+      const a = answers.find((x) => x.questionId === q._id.toString());
+      if (!a || !a.answerValue || String(a.answerValue).trim() === "") {
+        return res.status(400).json({ message: `Please answer the required question: "${q.questionText}"` });
       }
     }
 
-    // Create response
     const response = new Response({
-      evaluation: req.params.id,
-      student: evaluation.evaluationType === 'anonymous' ? null : req.session.userId,
-      answers: answers.map(a => ({
+      evaluation: id,
+      submittedBy: req.session.userId,
+      answers: answers.map((a) => ({
         questionId: a.questionId,
         questionText: a.questionText,
         questionType: a.questionType,
         answerValue: a.answerValue
       })),
-      isAnonymous: evaluation.evaluationType === 'anonymous'
+      isAnonymous: evaluation.evaluationType === "anonymous"
     });
 
     await response.save();
 
-    res.status(201).json({
-      message: 'Response submitted successfully',
-      response: {
-        id: response._id,
-        submittedAt: response.submittedAt,
-        isAnonymous: response.isAnonymous
-      }
+    return res.status(201).json({
+      message: "Response submitted successfully",
+      response: { id: response._id, submittedAt: response.submittedAt }
     });
-
-  } catch (error) {
-    console.error('Submit Response Error:', error);
-    
-    // Handle duplicate submission error
-    if (error.code === 11000) {
-      return res.status(400).json({ message: 'You have already submitted a response for this evaluation' });
-    }
-    
-    res.status(500).json({ message: 'Server error while submitting response' });
+  } catch (err) {
+    console.error("Submit Response Error:", err);
+    return res.status(500).json({ message: "Server error while submitting response" });
   }
 });
 
-// @route   GET /api/evaluations/:id/results
-// @desc    Get evaluation results (responses)
-// @access  Instructor (own course), Admin
-router.get('/:id/results', isAuthenticated, hasRole('instructor', 'admin'), async (req, res) => {
+/**
+ * GET /api/evaluations/:id/results  ✅ required by UAT tests
+ * Instructor/Admin only
+ */
+router.get("/:id/results", isAuthenticated, hasRole("instructor", "admin"), async (req, res) => {
   try {
-    const evaluation = await Evaluation.findById(req.params.id)
-      .populate('course', 'courseName courseCode');
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ message: "Invalid evaluation id" });
 
-    if (!evaluation) {
-      return res.status(404).json({ message: 'Evaluation not found' });
+    const evaluation = await Evaluation.findById(id).populate("course", "courseName courseCode");
+    if (!evaluation) return res.status(404).json({ message: "Evaluation not found" });
+
+    if (req.session.userRole === "instructor" && String(evaluation.instructor) !== String(req.session.userId)) {
+      return res.status(403).json({ message: "You can only view results for your own evaluations" });
     }
 
-    // Check if instructor owns this evaluation (or if admin)
-    if (req.session.userRole === 'instructor' && evaluation.instructor.toString() !== req.session.userId) {
-      return res.status(403).json({ message: 'You can only view results for your own evaluations' });
-    }
-
-    // Get all responses
-    const responses = await Response.find({ evaluation: req.params.id })
-      .populate('student', 'email role')
+    const responses = await Response.find({ evaluation: id })
+      .populate("submittedBy", "email role")
       .sort({ submittedAt: -1 });
 
-    // Calculate statistics for rating questions
+    // rating stats
     const statistics = {};
-    
-    evaluation.questions.forEach(question => {
-      if (question.questionType === 'rating') {
-        const ratings = responses
-          .map(r => r.answers.find(a => a.questionId.toString() === question._id.toString()))
-          .filter(a => a && a.answerValue)
-          .map(a => parseInt(a.answerValue));
+    evaluation.questions.forEach((q) => {
+      if (q.questionType !== "rating") return;
 
-        if (ratings.length > 0) {
-          const sum = ratings.reduce((acc, val) => acc + val, 0);
-          const average = (sum / ratings.length).toFixed(2);
-          
-          statistics[question._id] = {
-            questionText: question.questionText,
-            average: parseFloat(average),
-            count: ratings.length,
-            distribution: {
-              1: ratings.filter(r => r === 1).length,
-              2: ratings.filter(r => r === 2).length,
-              3: ratings.filter(r => r === 3).length,
-              4: ratings.filter(r => r === 4).length,
-              5: ratings.filter(r => r === 5).length
-            }
-          };
+      const ratings = responses
+        .map((r) => r.answers.find((a) => String(a.questionId) === String(q._id)))
+        .filter(Boolean)
+        .map((a) => parseInt(a.answerValue, 10))
+        .filter((n) => !Number.isNaN(n));
+
+      if (ratings.length === 0) return;
+
+      const sum = ratings.reduce((acc, v) => acc + v, 0);
+      const avg = sum / ratings.length;
+
+      statistics[q._id] = {
+        questionText: q.questionText,
+        average: Number(avg.toFixed(2)),
+        count: ratings.length,
+        distribution: {
+          1: ratings.filter((r) => r === 1).length,
+          2: ratings.filter((r) => r === 2).length,
+          3: ratings.filter((r) => r === 3).length,
+          4: ratings.filter((r) => r === 4).length,
+          5: ratings.filter((r) => r === 5).length
         }
-      }
+      };
     });
 
-    res.json({
+    return res.json({
       evaluation,
       totalResponses: responses.length,
-      responses: evaluation.evaluationType === 'anonymous' 
-        ? responses.map(r => ({ ...r.toObject(), student: null }))
+      responses: evaluation.evaluationType === "anonymous"
+        ? responses.map((r) => ({ ...r.toObject(), submittedBy: null }))
         : responses,
       statistics
     });
+  } catch (err) {
+    console.error("Get Results Error:", err);
+    return res.status(500).json({ message: "Server error while fetching results" });
+  }
+});
 
-  } catch (error) {
-    console.error('Get Results Error:', error);
-    res.status(500).json({ message: 'Server error while fetching results' });
+/**
+ * GET /api/evaluations/:id/my-response
+ */
+router.get("/:id/my-response", isAuthenticated, hasRole("student"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ message: "Invalid evaluation id" });
+
+    const response = await Response.findOne({
+      evaluation: id,
+      submittedBy: req.session.userId
+    });
+
+    if (!response) return res.status(404).json({ message: "No submission found" });
+
+    return res.json({
+      response: {
+        id: response._id,
+        submittedAt: response.submittedAt,
+        answers: response.answers
+      }
+    });
+  } catch (err) {
+    console.error("My response error:", err);
+    return res.status(500).json({ message: "Server error while fetching your response" });
   }
 });
 
 module.exports = router;
-
-
-
-
-// POST /api/evaluations - Create evaluation (instructor/admin)
-// GET /api/evaluations - Get evaluations (filtered by role)
-// GET /api/evaluations/:id - Get single evaluation
-// PUT /api/evaluations/:id - Update evaluation
-// DELETE /api/evaluations/:id - Delete evaluation + responses
-// POST /api/evaluations/:id/submit - Submit response (student)
-// GET /api/evaluations/:id/results - View results with statistics (instructor/admin)
