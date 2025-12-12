@@ -15,7 +15,7 @@
 ```
 
    Expected output:
-   - "Server running on http://localhost:5000"
+   - "Server running on http://localhost:3001"
    - "MongoDB Connected Successfully"
 
 For testing instructions, please check the test.md
