@@ -5,78 +5,26 @@ import { createCard } from "../components/card.js";
 import { showModal } from "../components/modal.js";
 import { mockEnrollments } from "../data/mockEnrollments.js";
 import { authService } from "../services/authService.js";
+import { evaluationService } from "../services/evaluationService.js";
 
-export async function renderEvaluate() {
+export async function renderEvaluate(navigate) {
+  const go = typeof navigate === "function" ? navigate : () => {};
+
   const user = await authService.getCurrentUser();
-
   if (!user) {
-    navigate("/login");
+    go("/login");
     return;
   }
+
   const content = $("#app-content");
   content.innerHTML = "";
 
   const params = new URLSearchParams(window.location.search);
   const courseId = params.get("courseId");
+  const evaluationId = params.get("evaluationId");
+  const mode = params.get("mode") || "edit";
+  const isViewOnly = mode === "view";
 
-  const enrollment =
-    mockEnrollments.find((c) => c.courseId === courseId) || null;
-
-  const form = createElement("form", "form");
-
-  const errorSummary = createElement("div", "error-summary");
-  errorSummary.style.display = "none";
-  form.appendChild(errorSummary);
-
-  const headerWrapper = createElement("div", "evaluation-header");
-
-  const headerMain = createElement(
-    "div",
-    "evaluation-header-main",
-    enrollment ? enrollment.course : "Selected Course (Demo)"
-  );
-
-  const headerSubText = enrollment
-    ? `Instructor: ${enrollment.instructor}  •  Term: ${enrollment.term}`
-    : "Instructor: Demo Instructor  •  Term: Demo Term";
-
-  const headerSub = createElement("div", "evaluation-header-sub", headerSubText);
-
-  const headerNote = createElement(
-    "p",
-    "evaluation-header-note",
-    "Please respond to all required items marked with an asterisk (*)."
-  );
-
-  headerWrapper.appendChild(headerMain);
-  headerWrapper.appendChild(headerSub);
-  headerWrapper.appendChild(headerNote);
-
-  const overallProgressWrapper = createElement("div", "overall-progress");
-  const overallProgressLabel = createElement(
-    "div",
-    "overall-progress-label",
-    "Overall: 0/0 answered"
-  );
-  const overallProgressBar = createElement("div", "overall-progress-bar");
-  const overallProgressFill = createElement(
-    "div",
-    "overall-progress-bar-fill"
-  );
-  overallProgressBar.appendChild(overallProgressFill);
-  overallProgressWrapper.appendChild(overallProgressLabel);
-  overallProgressWrapper.appendChild(overallProgressBar);
-
-  headerWrapper.appendChild(overallProgressWrapper);
-  form.appendChild(headerWrapper);
-
-  const likertOptions = [
-    { value: "1", label: "1 - Strongly Disagree" },
-    { value: "2", label: "2 - Disagree" },
-    { value: "3", label: "3 - Neutral" },
-    { value: "4", label: "4 - Agree" },
-    { value: "5", label: "5 - Strongly Agree" }
-  ];
 
   const sections = [
     {
@@ -110,99 +58,201 @@ export async function renderEvaluate() {
         "These questions focus on the quality and usefulness of the course materials and resources provided.",
       tooltip:
         "Consider the clarity, accessibility, and helpfulness of slides, readings, and online materials."
+    },
+    {
+      id: "comments",
+      title: "Open Comments",
+      description:
+        "Use this space to share any additional feedback or suggestions about the course and instruction.",
+      tooltip:
+        "You can write anything that you think would help improve this course."
     }
   ];
 
-  const questions = [
-    // Course Organization & Instruction
-    {
-      name: "q1",
-      label: "The course content was well organized. *",
-      sectionId: "course-structure"
-    },
-    {
-      name: "q2",
-      label: "The instructor clearly explained course concepts. *",
-      sectionId: "course-structure"
-    },
-    // Feedback & Overall Experience
-    {
-      name: "q3",
-      label:
-        "Feedback on assignments and assessments helped me improve my learning. *",
-      sectionId: "learning-support"
-    },
-    {
-      name: "q4",
-      label: "Overall, I would recommend this course to other students. *",
-      sectionId: "learning-support"
-    },
-    // Classroom Engagement & Participation
-    {
-      name: "q5",
-      label:
-        "Class activities and discussions helped me stay engaged with the course material. *",
-      sectionId: "engagement"
-    },
-    {
-      name: "q6",
-      label:
-        "The instructor encouraged student participation and questions. *",
-      sectionId: "engagement"
-    },
-    // Course Materials & Resources
-    {
-      name: "q7",
-      label:
-        "The course materials (e.g., slides, readings, videos) supported my learning effectively. *",
-      sectionId: "materials"
-    },
-    {
-      name: "q8",
-      label:
-        "Online resources and tools used in this course were easy to access and use. *",
-      sectionId: "materials"
+
+  let evaluation = null;
+  let questions = [];
+  let dbQuestions = []; 
+  let myResponse = null;
+
+  const demoEnrollment =
+    mockEnrollments?.find((c) => c.courseId === courseId) || null;
+
+  const fallbackHeader = {
+    title: demoEnrollment ? demoEnrollment.course : "Selected Course (Demo)",
+    subtitle: demoEnrollment
+      ? `Instructor: ${demoEnrollment.instructor}  •  Term: ${demoEnrollment.term}`
+      : "Instructor: Demo Instructor  •  Term: Demo Term"
+  };
+
+  if (evaluationId) {
+    try {
+      const evaluationRes = await evaluationService.getEvaluation(evaluationId);
+      evaluation = evaluationRes?.evaluation || evaluationRes;
+
+      dbQuestions = Array.isArray(evaluation?.questions)
+        ? evaluation.questions
+        : [];
+
+      if (isViewOnly) {
+        const resp = await evaluationService.getMyResponse(evaluationId);
+        myResponse = resp?.response || null;
+      }
+
+      if (dbQuestions.length === 0) {
+        showModal("No questions found", "This evaluation has no questions configured.");
+        go("/dashboard");
+        return;
+      }
+
+      const sectionOrder = [
+        "course-structure",
+        "course-structure",
+        "learning-support",
+        "learning-support",
+        "engagement",
+        "engagement",
+        "materials",
+        "materials"
+      ];
+
+      questions = dbQuestions.map((q, idx) => {
+        const isText = q.questionType === "text";
+        const sectionId = isText
+          ? "comments"
+          : (sectionOrder[idx] || "course-structure");
+
+        return {
+          name: String(q._id),              
+          label: `${q.questionText}${q.isRequired ? " *" : ""}`,
+          sectionId,
+          questionType: q.questionType || "rating",
+          isRequired: q.isRequired !== false
+        };
+      });
+
+      const hasComments = questions.some((q) => q.sectionId === "comments");
+      if (!hasComments) {
+        questions.push({
+          name: "__comments__",
+          label: "Additional comments on the course and instruction *",
+          sectionId: "comments",
+          questionType: "text",
+          isRequired: true
+        });
+      }
+    } catch (err) {
+      showModal(
+        "Failed to load evaluation",
+        err?.data?.message || "Please try again."
+      );
+      go("/dashboard");
+      return;
     }
+  } else {
+    questions = [
+      { name: "q1", label: "The course content was well organized. *", sectionId: "course-structure", questionType: "rating", isRequired: true },
+      { name: "q2", label: "The instructor clearly explained course concepts. *", sectionId: "course-structure", questionType: "rating", isRequired: true },
+      { name: "q3", label: "Feedback on assignments and assessments helped me improve my learning. *", sectionId: "learning-support", questionType: "rating", isRequired: true },
+      { name: "q4", label: "Overall, I would recommend this course to other students. *", sectionId: "learning-support", questionType: "rating", isRequired: true },
+      { name: "q5", label: "Class activities and discussions helped me stay engaged with the course material. *", sectionId: "engagement", questionType: "rating", isRequired: true },
+      { name: "q6", label: "The instructor encouraged student participation and questions. *", sectionId: "engagement", questionType: "rating", isRequired: true },
+      { name: "q7", label: "The course materials (e.g., slides, readings, videos) supported my learning effectively. *", sectionId: "materials", questionType: "rating", isRequired: true },
+      { name: "q8", label: "Online resources and tools used in this course were easy to access and use. *", sectionId: "materials", questionType: "rating", isRequired: true },
+      { name: "comments", label: "Additional comments on the course and instruction *", sectionId: "comments", questionType: "text", isRequired: true }
+    ];
+  }
+
+  const form = createElement("form", "form");
+
+  const errorSummary = createElement("div", "error-summary");
+  errorSummary.style.display = "none";
+  form.appendChild(errorSummary);
+
+  const headerWrapper = createElement("div", "evaluation-header");
+
+  const headerMainText =
+    evaluation?.title ||
+    evaluation?.course?.courseName ||
+    fallbackHeader.title;
+
+  const headerMain = createElement("div", "evaluation-header-main", headerMainText);
+
+  const headerSubText =
+    evaluation?.course?.courseName
+      ? `${evaluation.course.courseName}${evaluation.course.courseCode ? ` (${evaluation.course.courseCode})` : ""}  •  Instructor: ${evaluation?.instructor?.email || "Instructor"}`
+      : fallbackHeader.subtitle;
+
+  const headerSub = createElement("div", "evaluation-header-sub", headerSubText);
+
+  const headerNote = createElement(
+    "p",
+    "evaluation-header-note",
+    isViewOnly
+      ? "This is a read-only view of your submitted evaluation."
+      : "Please respond to all required items marked with an asterisk (*)."
+  );
+
+  headerWrapper.appendChild(headerMain);
+  headerWrapper.appendChild(headerSub);
+  headerWrapper.appendChild(headerNote);
+
+  const overallProgressWrapper = createElement("div", "overall-progress");
+  const overallProgressLabel = createElement("div", "overall-progress-label", "Overall: 0/0 answered");
+  const overallProgressBar = createElement("div", "overall-progress-bar");
+  const overallProgressFill = createElement("div", "overall-progress-bar-fill");
+  overallProgressBar.appendChild(overallProgressFill);
+  overallProgressWrapper.appendChild(overallProgressLabel);
+  overallProgressWrapper.appendChild(overallProgressBar);
+
+  headerWrapper.appendChild(overallProgressWrapper);
+  form.appendChild(headerWrapper);
+
+  const likertOptions = [
+    { value: "1", label: "1 - Strongly Disagree" },
+    { value: "2", label: "2 - Disagree" },
+    { value: "3", label: "3 - Neutral" },
+    { value: "4", label: "4 - Agree" },
+    { value: "5", label: "5 - Strongly Agree" }
   ];
 
   const answers = {};
-  let commentsValue = ""; 
   const sectionBodies = {};
   const sectionProgressLabels = {};
+
+  if (isViewOnly && myResponse?.answers?.length) {
+    myResponse.answers.forEach((a) => {
+      if (a.questionId) answers[String(a.questionId)] = String(a.answerValue ?? "");
+    });
+  }
 
   function updateSectionProgress(sectionId) {
     const label = sectionProgressLabels[sectionId];
     if (!label) return;
 
-    const sectionQuestions = questions.filter(
-      (q) => q.sectionId === sectionId
-    );
-    const total = sectionQuestions.length;
-    const answeredCount = sectionQuestions.filter(
-      (q) => !!answers[q.name]
-    ).length;
+    const sectionQs = questions.filter((q) => q.sectionId === sectionId);
+    const total = sectionQs.length;
+
+    const answeredCount = sectionQs.filter((q) => {
+      const v = answers[q.name];
+      return v && String(v).trim().length > 0;
+    }).length;
 
     label.textContent = `${answeredCount}/${total} answered`;
   }
 
   function updateOverallProgress() {
-    const totalRequired = questions.length + 1; 
-    const answeredLikert = questions.filter(
-      (q) => !!answers[q.name]
-    ).length;
-    const commentsAnswered =
-      commentsValue && commentsValue.trim().length > 0 ? 1 : 0;
+    const requiredQs = questions.filter((q) => q.isRequired);
+    const total = requiredQs.length;
+    const answered = requiredQs.filter((q) => {
+      const v = answers[q.name];
+      return v && String(v).trim().length > 0;
+    }).length;
 
-    const answeredTotal = answeredLikert + commentsAnswered;
+    overallProgressLabel.textContent = `Overall: ${answered}/${total} answered`;
 
-    overallProgressLabel.textContent = `Overall: ${answeredTotal}/${totalRequired} answered`;
-
-    const percentage =
-      totalRequired === 0
-        ? 0
-        : Math.round((answeredTotal / totalRequired) * 100);
-
-    overallProgressFill.style.width = percentage + "%";
+    const pct = total === 0 ? 0 : Math.round((answered / total) * 100);
+    overallProgressFill.style.width = pct + "%";
   }
 
   function createSectionPanel(section) {
@@ -210,27 +260,15 @@ export async function renderEvaluate() {
 
     const header = createElement("div", "evaluation-section-header");
 
-    const titleWrapper = createElement(
-      "div",
-      "evaluation-section-title-wrapper"
-    );
+    const titleWrapper = createElement("div", "evaluation-section-title-wrapper");
     const title = createElement("h3", "evaluation-section-title", section.title);
-    const desc = createElement(
-      "p",
-      "evaluation-section-description",
-      section.description
-    );
+    const desc = createElement("p", "evaluation-section-description", section.description);
     titleWrapper.appendChild(title);
     titleWrapper.appendChild(desc);
 
     const metaWrapper = createElement("div", "evaluation-section-meta");
 
-    const progressLabel = createElement(
-      "span",
-      "evaluation-section-progress",
-      "0/0 answered"
-    );
-
+    const progressLabel = createElement("span", "evaluation-section-progress", "0/0 answered");
     const tooltipIcon = createElement("span", "evaluation-section-tooltip", "?");
     tooltipIcon.setAttribute("title", section.tooltip);
 
@@ -245,7 +283,6 @@ export async function renderEvaluate() {
 
     const helperBox = createElement("div", "evaluation-section-helper");
     helperBox.style.display = "none";
-
     helperBox.innerHTML = `
       <strong>How to answer this section:</strong>
       <ul>
@@ -258,8 +295,7 @@ export async function renderEvaluate() {
 
     tooltipIcon.addEventListener("click", (e) => {
       e.stopPropagation();
-      const isHidden = helperBox.style.display === "none";
-      helperBox.style.display = isHidden ? "block" : "none";
+      helperBox.style.display = helperBox.style.display === "none" ? "block" : "none";
     });
 
     header.addEventListener("click", () => {
@@ -270,7 +306,6 @@ export async function renderEvaluate() {
 
     sectionPanel.appendChild(header);
     sectionPanel.appendChild(body);
-
     form.appendChild(sectionPanel);
 
     sectionBodies[section.id] = body;
@@ -280,149 +315,86 @@ export async function renderEvaluate() {
   sections.forEach(createSectionPanel);
 
   questions.forEach((q) => {
-    const group = createRadioGroup({
+    const body = sectionBodies[q.sectionId] || form;
+
+    if (q.questionType === "rating") {
+      const group = createRadioGroup({
+        label: q.label,
+        name: q.name,
+        options: likertOptions,
+        value: answers[q.name] || "",
+        onChange: (value) => {
+          if (isViewOnly) return;
+          answers[q.name] = value;
+          updateSectionProgress(q.sectionId);
+          updateOverallProgress();
+        }
+      });
+
+      if (isViewOnly) {
+        group.querySelectorAll("input").forEach((i) => (i.disabled = true));
+      }
+
+      body.appendChild(group);
+      return;
+    }
+
+    const inputWrap = createInput({
       label: q.label,
-      name: q.name,
-      options: likertOptions,
-      value: "",
-      onChange: (value) => {
-        answers[q.name] = value;
+      id: q.name,
+      type: "text",
+      placeholder: "Please provide any additional feedback or suggestions...",
+      onInput: (val) => {
+        if (isViewOnly) return;
+        answers[q.name] = val;
         updateSectionProgress(q.sectionId);
         updateOverallProgress();
       }
     });
 
-    const body = sectionBodies[q.sectionId];
-    if (body) {
-      body.appendChild(group);
-    } else {
-      form.appendChild(group);
-    }
+    const el = inputWrap.querySelector("input, textarea");
+    if (el) el.value = answers[q.name] || "";
+    if (isViewOnly && el) el.disabled = true;
+
+    body.appendChild(inputWrap);
   });
+
   sections.forEach((s) => updateSectionProgress(s.id));
   updateOverallProgress();
 
-  const commentsSectionPanel = createElement(
-    "div",
-    "evaluation-section-panel"
-  );
-  const commentsHeader = createElement("div", "evaluation-section-header");
-
-  const commentsTitleWrapper = createElement(
-    "div",
-    "evaluation-section-title-wrapper"
-  );
-  const commentsTitle = createElement(
-    "h3",
-    "evaluation-section-title",
-    "Open Comments"
-  );
-  const commentsDesc = createElement(
-    "p",
-    "evaluation-section-description",
-    "Use this space to share any additional feedback or suggestions about the course and instruction."
-  );
-  commentsTitleWrapper.appendChild(commentsTitle);
-  commentsTitleWrapper.appendChild(commentsDesc);
-
-  const commentsMeta = createElement("div", "evaluation-section-meta");
-  const commentsProgressLabel = createElement(
-    "span",
-    "evaluation-section-progress",
-    "0/1 answered"
-  );
-  const commentsTooltip = createElement(
-    "span",
-    "evaluation-section-tooltip",
-    "?"
-  );
-  commentsTooltip.setAttribute(
-    "title",
-    "You can write anything that you think would help improve this course."
-  );
-
-  commentsMeta.appendChild(commentsProgressLabel);
-  commentsMeta.appendChild(commentsTooltip);
-
-  commentsHeader.appendChild(commentsTitleWrapper);
-  commentsHeader.appendChild(commentsMeta);
-
-  const commentsBody = createElement("div", "evaluation-section-body");
-  commentsBody.style.display = "block";
-
-  const commentsHelperBox = createElement(
-    "div",
-    "evaluation-section-helper"
-  );
-  commentsHelperBox.style.display = "none";
-  commentsHelperBox.innerHTML = `
-    <strong>Tips for comments:</strong>
-    <ul>
-      <li>You can mention what worked well and what could be improved.</li>
-      <li>Be as specific as possible so your feedback is actionable.</li>
-      <li>You do not need to include your name; keep it focused on the course.</li>
-    </ul>
-  `;
-  commentsBody.appendChild(commentsHelperBox);
-
-  commentsTooltip.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const isHidden = commentsHelperBox.style.display === "none";
-    commentsHelperBox.style.display = isHidden ? "block" : "none";
-  });
-
-  commentsHeader.addEventListener("click", () => {
-    const isCollapsed = commentsBody.style.display === "none";
-    commentsBody.style.display = isCollapsed ? "block" : "none";
-    commentsSectionPanel.classList.toggle("collapsed", !isCollapsed);
-  });
-
-  const commentsInput = createInput({
-    label: "Additional comments on the course and instruction *",
-    id: "comments",
-    type: "text",
-    placeholder: "Please provide any additional feedback or suggestions...",
-    onInput: (val) => {
-      commentsValue = val;
-      const answered = commentsValue && commentsValue.trim().length > 0;
-      commentsProgressLabel.textContent = answered
-        ? "1/1 answered"
-        : "0/1 answered";
-      updateOverallProgress();
-    }
-  });
-
-  commentsBody.appendChild(commentsInput);
-  commentsSectionPanel.appendChild(commentsHeader);
-  commentsSectionPanel.appendChild(commentsBody);
-  form.appendChild(commentsSectionPanel);
-
   const actions = createElement("div", "form-actions");
-  const submitBtn = createElement("button", "btn btn-primary");
-  submitBtn.type = "submit";
-  submitBtn.textContent = "Submit Evaluation";
-  actions.appendChild(submitBtn);
+
+  if (!isViewOnly) {
+    const submitBtn = createElement("button", "btn btn-primary");
+    submitBtn.type = "submit";
+    submitBtn.textContent = "Submit Evaluation";
+    actions.appendChild(submitBtn);
+  } else {
+    const backBtn = createElement("button", "btn btn-secondary");
+    backBtn.type = "button";
+    backBtn.textContent = "Back to Dashboard";
+    backBtn.addEventListener("click", () => go("/dashboard"));
+    actions.appendChild(backBtn);
+  }
+
   form.appendChild(actions);
 
-  form.addEventListener("submit", (e) => {
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (isViewOnly) return;
 
     const errors = [];
-
     questions.forEach((q) => {
-      if (!answers[q.name]) {
+      if (!q.isRequired) return;
+      const v = answers[q.name];
+      if (!v || String(v).trim() === "") {
         const labelText = q.label.replace(/\s*\*$/, "");
         errors.push(`Please respond to: "${labelText}".`);
       }
     });
 
-    if (!commentsValue || !commentsValue.trim()) {
-      errors.push("Please provide your additional comments or suggestions.");
-    }
-
     if (errors.length > 0) {
       errorSummary.innerHTML = "";
-
       const heading = createElement(
         "p",
         "error-summary-heading",
@@ -443,33 +415,57 @@ export async function renderEvaluate() {
       return;
     }
 
-    errorSummary.innerHTML = "";
     errorSummary.style.display = "none";
 
-    showModal(
-      "Thank you for your feedback",
-      "Your course evaluation has been recorded for this demonstration. Your input is valuable and helps improve future course offerings."
-    );
+    if (!evaluationId) {
+      showModal(
+        "Thank you for your feedback",
+        "Your course evaluation has been recorded for this demonstration."
+      );
 
+      form.reset();
+      Object.keys(answers).forEach((k) => (answers[k] = ""));
+      sections.forEach((s) => updateSectionProgress(s.id));
+      updateOverallProgress();
+      return;
+    }
 
-    form.reset();
+    const payloadAnswers = questions
+      .filter((q) => q.name !== "__comments__") 
+      .map((q) => {
+        const dbQ = dbQuestions.find((x) => String(x._id) === String(q.name));
+        return {
+          questionId: String(q.name),
+          questionText: dbQ?.questionText || q.label.replace(/\s*\*$/, ""),
+          questionType: dbQ?.questionType || q.questionType,
+          answerValue: String(answers[q.name] || "")
+        };
+      });
 
-    questions.forEach((q) => {
-      answers[q.name] = "";
-      updateSectionProgress(q.sectionId);
-    });
-    commentsValue = "";
-    commentsProgressLabel.textContent = "0/1 answered";
-    updateOverallProgress();
+    if (questions.some((q) => q.name === "__comments__")) {
+      payloadAnswers.push({
+        questionId: "__comments__",
+        questionText: "Additional comments on the course and instruction.",
+        questionType: "text",
+        answerValue: String(answers["__comments__"] || "")
+      });
+    }
+
+    try {
+      await evaluationService.submitEvaluation(evaluationId, { answers: payloadAnswers });
+
+      showModal("Thank you for your feedback", "Your evaluation has been submitted successfully.");
+
+      go("/dashboard");
+    } catch (err) {
+      showModal("Submission blocked", err?.data?.message || "Server error while submitting response.");
+      go("/dashboard");
+    }
   });
 
   const wrapper = createElement("div");
   wrapper.appendChild(form);
 
-  const title = enrollment
-    ? "Course Evaluation Form"
-    : "Course Evaluation Form (Demo Course)";
-
-  const card = createCard(title, wrapper);
+  const card = createCard("Course Evaluation Form", wrapper);
   content.appendChild(card);
 }

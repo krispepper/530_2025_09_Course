@@ -5,6 +5,7 @@ import { createTable } from "../components/table.js";
 import { showToast } from "../components/toast.js";
 import { authService } from "../services/authService.js";
 import { studentCourseService } from "../services/studentCourseService.js";
+import { evaluationService } from "../services/evaluationService.js";
 
 export async function renderDashboard(navigate) {
   const user = await authService.getCurrentUser();
@@ -22,7 +23,8 @@ export async function renderDashboard(navigate) {
     res = await studentCourseService.getMyEnrollments();
   } catch (err) {
     content.appendChild(
-      createCard("My Enrolled Courses", 
+      createCard(
+        "My Enrolled Courses",
         createElement("p", "empty-state", "Failed to load enrollments")
       )
     );
@@ -32,23 +34,37 @@ export async function renderDashboard(navigate) {
   const courses = res.courses || [];
 
   if (courses.length === 0) {
-    const empty = createElement(
-      "p",
-      "empty-state",
-      "You are not enrolled in any courses yet."
+    content.appendChild(
+      createCard(
+        "My Enrolled Courses",
+        createElement("p", "empty-state", "You are not enrolled in any courses yet.")
+      )
     );
-    const card = createCard("My Enrolled Courses", empty);
-    content.appendChild(card);
     return;
   }
 
-  const tableData = courses.map(course => ({
-    courseId: course._id,
-    course: course.courseName,
-    instructor: course.instructor?.email || "N/A",
-    term: "Fall 2025",
-    status: course.isActive ? "Active" : "Inactive"
-  }));
+  const rows = await Promise.all(
+    courses.map(async (course) => {
+      let ensureRes = null;
+
+      try {
+        ensureRes = await evaluationService.ensureEvaluation(course._id);
+      } catch (e) {
+        ensureRes = null;
+      }
+
+      return {
+        courseId: course._id,
+        course: course.courseName,
+        instructor: course.instructor?.email || "N/A",
+        term: "Fall 2025",
+        status: course.isActive ? "Active" : "Inactive",
+
+        evaluationId: ensureRes?.evaluationId || null,
+        hasSubmitted: !!ensureRes?.hasSubmitted
+      };
+    })
+  );
 
   const columns = [
     { key: "course", label: "Course" },
@@ -57,16 +73,33 @@ export async function renderDashboard(navigate) {
     { key: "status", label: "Status" },
     {
       key: "action",
-      label: "Start / Continue",
-      render: (row) =>
-        createButton("Start / Continue", "primary", () => {
-          showToast(`Opening evaluation for ${row.course}`, "info", 1500);
-          navigate(`/evaluate?courseId=${encodeURIComponent(row.courseId)}`);
-        })
+      label: "Action",
+      render: (row) => {
+        if (!row.evaluationId) {
+          const btn = createButton("Unavailable", "secondary", () => {
+            showToast("Evaluation not available right now.", "error", 1500);
+          });
+          btn.disabled = true;
+          return btn;
+        }
+
+        if (row.hasSubmitted) {
+          return createButton("View", "secondary", () => {
+            showToast(`Opening submitted evaluation for ${row.course}`, "info", 1200);
+            navigate(
+              `/evaluate?evaluationId=${encodeURIComponent(row.evaluationId)}&mode=view`
+            );
+          });
+        }
+
+        return createButton("Start / Continue", "primary", () => {
+          showToast(`Opening evaluation for ${row.course}`, "info", 1200);
+          navigate(`/evaluate?evaluationId=${encodeURIComponent(row.evaluationId)}`);
+        });
+      }
     }
   ];
 
-  const tableElem = createTable(columns, tableData);
-  const card = createCard("My Enrolled Courses", tableElem);
-  content.appendChild(card);
+  const tableElem = createTable(columns, rows);
+  content.appendChild(createCard("My Enrolled Courses", tableElem));
 }
