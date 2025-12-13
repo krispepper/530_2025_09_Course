@@ -1,29 +1,44 @@
-const BASE_URL = "/api/courses";
+async function request(path, options = {}) {
+  const res = await fetch(path, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    ...options
+  });
+
+  const ct = res.headers.get("content-type") || "";
+  const data = ct.includes("application/json") ? await res.json() : null;
+
+  if (!res.ok) {
+    const err = new Error(data?.message || "Request failed");
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
 
 export const instructorCourseService = {
-  async getMyCourses() {
-    return fetch(BASE_URL).then(res => res.json());
+  getMyCourses() {
+    return request("/api/courses/instructor", { method: "GET" });
   },
 
-  async createCourse(data) {
-    return fetch(BASE_URL, {
+  createCourse(payload) {
+    return request("/api/courses", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data)
-    }).then(res => res.json());
+      body: JSON.stringify(payload)
+    });
   },
 
-  async updateCourse(id, data) {
-    return fetch(`${BASE_URL}/${id}`, {
+  updateCourse(courseId, payload) {
+    return request(`/api/courses/${encodeURIComponent(courseId)}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data)
-    }).then(res => res.json());
+      body: JSON.stringify(payload)
+    });
   },
 
-  async deleteCourse(id) {
-    return fetch(`${BASE_URL}/${id}`, {
+  deleteCourse(courseId) {
+    return request(`/api/courses/${encodeURIComponent(courseId)}`, {
       method: "DELETE"
-    }).then(res => res.json());
+    });
   }
 };

@@ -2,63 +2,74 @@ import { $, createElement } from "../components/domUtils.js";
 import { createSelect } from "../components/select.js";
 import { createCard } from "../components/card.js";
 import { createTable } from "../components/table.js";
-import { mockEvaluationSummaries } from "../data/mockEvaluationSummaries.js";
 import { authService } from "../services/authService.js";
+import { courseService } from "../services/courseService.js";
+import { evaluationService } from "../services/evaluationService.js";
+import { showLargeModal } from "../components/modal.js";
+import { renderEvaluate } from "./evaluationForm.js";
 
-export async function renderAdminReports() {
+export async function renderAdminReports(navigate) {
+  const go = typeof navigate === "function" ? navigate : () => {};
+
   const user = await authService.getCurrentUser();
-
   if (!user || user.role !== "admin") {
-    navigate("/dashboard");
+    go("/dashboard");
     return;
   }
+
   const content = $("#app-content");
   content.innerHTML = "";
 
   const wrapper = createElement("div", "admin-reports");
-
   const modalRoot = $("#modal-root");
 
-  const uniqueTerms = Array.from(
-    new Set(mockEvaluationSummaries.map((e) => e.term))
+  let coursesRes;
+  try {
+    coursesRes = await courseService.getAllCourses();
+  } catch (err) {
+    content.appendChild(
+      createCard(
+        "Admin Evaluation Reports",
+        createElement("p", "empty-state", err?.message || "Failed to load courses")
+      )
+    );
+    return;
+  }
+
+  const allCourses = coursesRes?.courses || [];
+  const terms = Array.from(
+    new Set(allCourses.map((c) => (c.term || "").trim()).filter(Boolean))
   );
-  const uniqueCourses = Array.from(
-    new Set(mockEvaluationSummaries.map((e) => e.course))
+  const courseNames = Array.from(
+    new Set(allCourses.map((c) => (c.courseName || "").trim()).filter(Boolean))
   );
 
   let selectedTerm = "";
   let selectedCourse = "";
-
   let currentPage = 1;
-  const pageSize = 5; 
+  const pageSize = 6;
 
   const filtersRow = createElement("div", "filters-row");
 
   const termSelect = createSelect({
     label: "Term",
     id: "termFilter",
-    options: [
-      { value: "", label: "All Terms" },
-      ...uniqueTerms.map((t) => ({ value: t, label: t }))
-    ],
+    options: [{ value: "", label: "All Terms" }, ...terms.map((t) => ({ value: t, label: t }))],
     onChange: (val) => {
       selectedTerm = val;
       currentPage = 1;
-      showSkeletonThenUpdate();
+      renderTable();
     }
   });
 
   const courseSelect = createSelect({
     label: "Course",
     id: "courseFilter",
-    options: [
-      { value: "", label: "All Courses" },
-      ...uniqueCourses.map((c) => ({ value: c, label: c }))
-    ],
+    options: [{ value: "", label: "All Courses" }, ...courseNames.map((c) => ({ value: c, label: c }))],
     onChange: (val) => {
       selectedCourse = val;
       currentPage = 1;
-      showSkeletonThenUpdate();
+      renderTable();
     }
   });
 
@@ -67,11 +78,7 @@ export async function renderAdminReports() {
 
   const chipsRow = createElement("div", "filter-chips-row");
   const clearFiltersWrapper = createElement("div", "clear-filters-wrapper");
-  const clearFiltersBtn = createElement(
-    "button",
-    "btn-clear-filters",
-    "Clear all"
-  );
+  const clearFiltersBtn = createElement("button", "btn-clear-filters", "Clear all");
 
   clearFiltersBtn.type = "button";
   clearFiltersBtn.addEventListener("click", () => {
@@ -85,22 +92,12 @@ export async function renderAdminReports() {
     if (courseSelectEl) courseSelectEl.value = "";
 
     updateFilterChips();
-    showSkeletonThenUpdate();
+    renderTable();
   });
 
   clearFiltersWrapper.appendChild(clearFiltersBtn);
 
-  const skeleton = createElement("div", "skeleton-wrapper");
-  for (let i = 0; i < 4; i++) {
-    const row = createElement("div", "skeleton-row");
-    skeleton.appendChild(row);
-  }
-
-  const emptyState = createElement(
-    "div",
-    "empty-state",
-    "No evaluations match your filters."
-  );
+  const emptyState = createElement("div", "empty-state", "No courses match your filters.");
   emptyState.style.display = "none";
 
   const tableRegion = createElement("div", "admin-table-region");
@@ -108,18 +105,15 @@ export async function renderAdminReports() {
   wrapper.appendChild(filtersRow);
   wrapper.appendChild(chipsRow);
   wrapper.appendChild(clearFiltersWrapper);
-  wrapper.appendChild(skeleton);
   wrapper.appendChild(emptyState);
   wrapper.appendChild(tableRegion);
 
-  const card = createCard("Admin Evaluation Reports", wrapper);
-  content.appendChild(card);
-
+  content.appendChild(createCard("Admin Evaluation Reports", wrapper));
 
   function applyFilters() {
-    return mockEvaluationSummaries.filter((item) => {
-      const byTerm = selectedTerm ? item.term === selectedTerm : true;
-      const byCourse = selectedCourse ? item.course === selectedCourse : true;
+    return allCourses.filter((c) => {
+      const byTerm = selectedTerm ? String(c.term || "").trim() === selectedTerm : true;
+      const byCourse = selectedCourse ? String(c.courseName || "").trim() === selectedCourse : true;
       return byTerm && byCourse;
     });
   }
@@ -128,37 +122,38 @@ export async function renderAdminReports() {
     chipsRow.innerHTML = "";
 
     if (!selectedTerm && !selectedCourse) {
-      const none = createElement("span", "filter-chip-empty", "No filters applied");
-      chipsRow.appendChild(none);
+      chipsRow.appendChild(createElement("span", "filter-chip-empty", "No filters applied"));
       return;
     }
 
     if (selectedTerm) {
-      const chip = createFilterChip("Term", selectedTerm, () => {
-        selectedTerm = "";
-        const termSelectEl = document.getElementById("termFilter");
-        if (termSelectEl) termSelectEl.value = "";
-        currentPage = 1;
-        updateFilterChips();
-        showSkeletonThenUpdate();
-      });
-      chipsRow.appendChild(chip);
+      chipsRow.appendChild(
+        createChip("Term", selectedTerm, () => {
+          selectedTerm = "";
+          const termSelectEl = document.getElementById("termFilter");
+          if (termSelectEl) termSelectEl.value = "";
+          currentPage = 1;
+          updateFilterChips();
+          renderTable();
+        })
+      );
     }
 
     if (selectedCourse) {
-      const chip = createFilterChip("Course", selectedCourse, () => {
-        selectedCourse = "";
-        const courseSelectEl = document.getElementById("courseFilter");
-        if (courseSelectEl) courseSelectEl.value = "";
-        currentPage = 1;
-        updateFilterChips();
-        showSkeletonThenUpdate();
-      });
-      chipsRow.appendChild(chip);
+      chipsRow.appendChild(
+        createChip("Course", selectedCourse, () => {
+          selectedCourse = "";
+          const courseSelectEl = document.getElementById("courseFilter");
+          if (courseSelectEl) courseSelectEl.value = "";
+          currentPage = 1;
+          updateFilterChips();
+          renderTable();
+        })
+      );
     }
   }
 
-  function createFilterChip(label, value, onClear) {
+  function createChip(label, value, onClear) {
     const chip = createElement("button", "filter-chip");
     chip.type = "button";
 
@@ -174,14 +169,14 @@ export async function renderAdminReports() {
     chip.appendChild(spanLabel);
     chip.appendChild(spanValue);
     chip.appendChild(spanClose);
-
     chip.addEventListener("click", onClear);
     return chip;
   }
 
   function renderTable() {
-    const filtered = applyFilters();
+    updateFilterChips();
 
+    const filtered = applyFilters();
     tableRegion.innerHTML = "";
 
     if (filtered.length === 0) {
@@ -193,63 +188,53 @@ export async function renderAdminReports() {
 
     const totalItems = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-
-    if (currentPage > totalPages) {
-      currentPage = totalPages;
-    }
+    if (currentPage > totalPages) currentPage = totalPages;
 
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
     const pageItems = filtered.slice(startIndex, endIndex);
 
+    const rows = pageItems.map((c) => ({
+      _id: c._id,
+      course: c.courseName,
+      section: c.section || "N/A",
+      term: c.term || "N/A",
+      lastUpdated: c.updatedAt ? new Date(c.updatedAt).toLocaleString() : "—",
+      actions: "Actions"
+    }));
+
     const columns = [
       { key: "course", label: "Course" },
       { key: "section", label: "Section" },
-      { key: "submissions", label: "Submissions" },
-      { key: "lastUpdated", label: "Last Updated" }
+      { key: "term", label: "Term" },
+      { key: "lastUpdated", label: "Last Updated" },
+      { key: "actions", label: "Actions" }
     ];
 
-    const table = createTable(columns, pageItems);
+    const table = createTable(columns, rows);
 
-    if (table) {
-      const tbodyRows = table.querySelectorAll("tbody tr");
-      tbodyRows.forEach((rowEl, idx) => {
-        const record = pageItems[idx];
-        rowEl.classList.add("clickable-row");
+    const tbodyRows = table.querySelectorAll("tbody tr");
+    tbodyRows.forEach((rowEl, idx) => {
+      const record = rows[idx];
+      rowEl.lastChild.innerHTML = "";
 
-        rowEl.addEventListener("click", () => {
-          openDetailsModal(record);
-        });
-      });
+      const viewBtn = createElement("button", "btn-sm", "View Evaluations");
+      viewBtn.type = "button";
+      viewBtn.addEventListener("click", () => openEvaluationsModal(record));
 
-      tableRegion.appendChild(table);
-    }
+      rowEl.lastChild.appendChild(viewBtn);
+    });
 
-    const pagination = createPaginationControls(
-      currentPage,
-      totalPages,
-      totalItems,
-      startIndex + 1,
-      Math.min(endIndex, totalItems)
+    tableRegion.appendChild(table);
+    tableRegion.appendChild(
+      createPaginationControls(currentPage, totalPages, totalItems, startIndex + 1, Math.min(endIndex, totalItems))
     );
-    tableRegion.appendChild(pagination);
   }
 
-  function createPaginationControls(
-    current,
-    totalPages,
-    totalItems,
-    startDisplay,
-    endDisplay
-  ) {
+  function createPaginationControls(current, totalPages, totalItems, startDisplay, endDisplay) {
     const container = createElement("div", "admin-pagination");
 
-    const summary = createElement(
-      "div",
-      "pagination-summary",
-      `Showing ${startDisplay}–${endDisplay} of ${totalItems}`
-    );
-
+    const summary = createElement("div", "pagination-summary", `Showing ${startDisplay}–${endDisplay} of ${totalItems}`);
     const controls = createElement("div", "pagination-controls");
 
     const prevBtn = createElement("button", "pagination-btn", "Previous");
@@ -262,11 +247,7 @@ export async function renderAdminReports() {
       }
     });
 
-    const pageInfo = createElement(
-      "span",
-      "pagination-page-info",
-      `Page ${current} of ${totalPages}`
-    );
+    const pageInfo = createElement("span", "pagination-page-info", `Page ${current} of ${totalPages}`);
 
     const nextBtn = createElement("button", "pagination-btn", "Next");
     nextBtn.type = "button";
@@ -284,153 +265,196 @@ export async function renderAdminReports() {
 
     container.appendChild(summary);
     container.appendChild(controls);
-
     return container;
   }
 
-  function openDetailsModal(record) {
+  async function openEvaluationsModal(courseRecord) {
     if (!modalRoot) return;
-
     modalRoot.innerHTML = "";
 
     const backdrop = createElement("div", "modal-backdrop");
     const modal = createElement("div", "modal admin-report-modal");
 
-    function closeModal() {
-      modalRoot.innerHTML = "";
-    }
-
     const header = createElement("div", "modal-header");
-    const title = createElement(
-      "h3",
-      null,
-      `${record.course} – Section ${record.section}`
-    );
+    const title = createElement("h3", null, `${courseRecord.course} — Evaluations`);
     const closeBtn = createElement("button", "modal-close", "×");
     closeBtn.type = "button";
-    closeBtn.addEventListener("click", closeModal);
-
-    const subtitle = createElement(
-      "p",
-      "modal-subtitle",
-      record.term ? `Term: ${record.term}` : ""
-    );
-
+    closeBtn.addEventListener("click", () => (modalRoot.innerHTML = ""));
     header.appendChild(title);
     header.appendChild(closeBtn);
 
     const body = createElement("div", "modal-body");
-    body.appendChild(subtitle);
+    body.appendChild(createElement("p", "modal-subtitle", `Term: ${courseRecord.term} | Section: ${courseRecord.section}`));
 
-    const avgCard = createElement("div", "side-panel-card");
-    const avgTitle = createElement("h4", null, "Average scores");
-
-    const scoreMetrics = [
-      { label: "Overall", value: record.avgOverall },
-      { label: "Instructor", value: record.avgInstructor },
-      { label: "Course", value: record.avgCourse }
-    ].filter((m) => m.value !== undefined && m.value !== null);
-
-    let avgBody;
-    if (scoreMetrics.length === 0) {
-      avgBody = createElement(
-        "p",
-        "side-panel-text",
-        "Average scores are not available in the mock data."
-      );
-    } else {
-      avgBody = createElement("ul", "avg-scores-list");
-      scoreMetrics.forEach((m) => {
-        const li = createElement(
-          "li",
-          null,
-          `${m.label}: ${Number(m.value).toFixed(2)}`
-        );
-        avgBody.appendChild(li);
-      });
-    }
-
-    avgCard.appendChild(avgTitle);
-    avgCard.appendChild(avgBody);
-
-    const responsesCard = createElement("div", "side-panel-card");
-    const responsesTitle = createElement("h4", null, "Response count");
-    const countValue =
-      record.submissions !== undefined && record.submissions !== null
-        ? record.submissions
-        : record.responseCount;
-    const responsesBody = createElement(
-      "p",
-      "side-panel-text",
-      countValue !== undefined
-        ? `${countValue} responses submitted`
-        : "Response count not available."
-    );
-    responsesCard.appendChild(responsesTitle);
-    responsesCard.appendChild(responsesBody);
-
-    const commentsCard = createElement("div", "side-panel-card");
-    const commentsTitle = createElement("h4", null, "Top comments");
-
-    const commentsArray =
-      record.topComments ||
-      record.comments ||
-      [];
-
-    let commentsBody;
-    if (!commentsArray || commentsArray.length === 0) {
-      commentsBody = createElement(
-        "p",
-        "side-panel-text",
-        "No comments available."
-      );
-    } else {
-      commentsBody = createElement("ul", "top-comments-list");
-      commentsArray.slice(0, 3).forEach((c) => {
-        const li = createElement("li", "top-comment-item", c);
-        commentsBody.appendChild(li);
-      });
-    }
-
-    commentsCard.appendChild(commentsTitle);
-    commentsCard.appendChild(commentsBody);
-
-    body.appendChild(avgCard);
-    body.appendChild(responsesCard);
-    body.appendChild(commentsCard);
-
-    const footer = createElement("div", "modal-footer");
-    const closeFooterBtn = createElement("button", "btn-secondary", "Close");
-    closeFooterBtn.type = "button";
-    closeFooterBtn.addEventListener("click", closeModal);
-    footer.appendChild(closeFooterBtn);
+    const loading = createElement("p", "side-panel-text", "Loading evaluations...");
+    body.appendChild(loading);
 
     modal.appendChild(header);
     modal.appendChild(body);
-    modal.appendChild(footer);
-
     backdrop.appendChild(modal);
     modalRoot.appendChild(backdrop);
 
     backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) {
-        closeModal();
-      }
+      if (e.target === backdrop) modalRoot.innerHTML = "";
     });
+
+    let evalRes;
+    try {
+      evalRes = await evaluationService.listEvaluations();
+    } catch (err) {
+      loading.textContent = err?.data?.message || err?.message || "Failed to load evaluations";
+      return;
+    }
+
+    const allEvals = evalRes?.evaluations || [];
+    const courseEvals = allEvals.filter((ev) => String(ev.course?._id || ev.course) === String(courseRecord._id));
+
+    body.innerHTML = "";
+    body.appendChild(createElement("p", "modal-subtitle", `Term: ${courseRecord.term} | Section: ${courseRecord.section}`));
+
+    if (courseEvals.length === 0) {
+      body.appendChild(createElement("p", "side-panel-text", "No evaluations found for this course."));
+      return;
+    }
+
+    const list = createElement("div", "admin-eval-list");
+    courseEvals.forEach((ev) => {
+      const row = createElement("div", "admin-eval-item");
+
+      const left = createElement("div", "admin-eval-left");
+      left.appendChild(createElement("div", "admin-eval-title", ev.title || "Evaluation"));
+      left.appendChild(
+        createElement(
+          "div",
+          "admin-eval-meta",
+          `Type: ${ev.evaluationType} | Active: ${ev.isActive ? "Yes" : "No"}`
+        )
+      );
+
+      const right = createElement("div", "admin-eval-right");
+      const btn = createElement("button", "btn-sm", "View Submissions");
+      btn.type = "button";
+      btn.addEventListener("click", () => openSubmissionsModal(ev));
+      right.appendChild(btn);
+
+      row.appendChild(left);
+      row.appendChild(right);
+      list.appendChild(row);
+    });
+
+    body.appendChild(list);
   }
 
-  function showSkeletonThenUpdate() {
-    skeleton.style.display = "block";
-    tableRegion.innerHTML = "";
-    emptyState.style.display = "none";
+  async function openSubmissionsModal(evaluation) {
+    if (!modalRoot) return;
+    modalRoot.innerHTML = "";
 
-    setTimeout(() => {
-      skeleton.style.display = "none";
-      updateFilterChips();
-      renderTable();
-    }, 600);
+    const backdrop = createElement("div", "modal-backdrop");
+    const modal = createElement("div", "modal admin-report-modal");
+
+    const header = createElement("div", "modal-header");
+    const title = createElement("h3", null, `Submissions — ${evaluation.title || "Evaluation"}`);
+    const closeBtn = createElement("button", "modal-close", "×");
+    closeBtn.type = "button";
+    closeBtn.addEventListener("click", () => (modalRoot.innerHTML = ""));
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const body = createElement("div", "modal-body");
+    body.appendChild(createElement("p", "side-panel-text", "Loading submissions..."));
+
+    modal.appendChild(header);
+    modal.appendChild(body);
+    backdrop.appendChild(modal);
+    modalRoot.appendChild(backdrop);
+
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) modalRoot.innerHTML = "";
+    });
+
+    let results;
+    try {
+      results = await evaluationService.getResults(evaluation._id);
+    } catch (err) {
+      body.innerHTML = "";
+      body.appendChild(
+        createElement("p", "side-panel-text", err?.data?.message || err?.message || "Failed to load results")
+      );
+      return;
+    }
+
+    const responses = results?.responses || [];
+    body.innerHTML = "";
+
+    if (responses.length === 0) {
+      body.appendChild(createElement("p", "side-panel-text", "No submissions yet."));
+      return;
+    }
+
+    const rows = responses.map((r) => {
+      const submittedBy = r.submittedBy || null;
+      const studentName = submittedBy?.fullName || submittedBy?.name || submittedBy?.email || "Anonymous / Hidden";
+
+      return {
+        responseId: r._id,
+        student: studentName,
+        submittedAt: r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "—",
+        action: "Action",
+        _raw: r
+      };
+    });
+
+    const columns = [
+      { key: "student", label: "Student" },
+      { key: "submittedAt", label: "Submitted At" },
+      { key: "action", label: "Action" }
+    ];
+
+    const table = createTable(columns, rows);
+
+    const tbodyRows = table.querySelectorAll("tbody tr");
+    tbodyRows.forEach((rowEl, idx) => {
+      const record = rows[idx];
+      rowEl.lastChild.innerHTML = "";
+
+      const viewBtn = createElement("button", "btn-sm", "View");
+      viewBtn.type = "button";
+
+      viewBtn.addEventListener("click", async () => {
+        const mount = document.createElement("div");
+
+        try {
+          await renderEvaluate(
+            () => {},
+            {
+              evaluationId: results.evaluation._id,
+              responseId: record._raw._id,
+              mode: "adminView",
+              mountNode: mount
+            }
+          );
+
+          showLargeModal(
+            "View Submitted Evaluation",
+            mount,
+            () => {}, 
+            "Back to Reports"
+          );
+        } catch (e) {
+          showLargeModal(
+            "Failed to open evaluation",
+            createElement("p", "side-panel-text", e?.message || "Please try again."),
+            () => {},
+            "Back to Reports"
+          );
+        }
+      });
+
+      rowEl.lastChild.appendChild(viewBtn);
+    });
+
+    body.appendChild(table);
   }
 
-  updateFilterChips();
-  showSkeletonThenUpdate();
+  renderTable();
 }

@@ -23,10 +23,7 @@ export async function renderDashboard(navigate) {
     res = await studentCourseService.getMyEnrollments();
   } catch (err) {
     content.appendChild(
-      createCard(
-        "My Enrolled Courses",
-        createElement("p", "empty-state", "Failed to load enrollments")
-      )
+      createCard("My Enrolled Courses", createElement("p", "empty-state", "Failed to load enrollments"))
     );
     return;
   }
@@ -57,7 +54,8 @@ export async function renderDashboard(navigate) {
         courseId: course._id,
         course: course.courseName,
         instructor: course.instructor?.email || "N/A",
-        term: "Fall 2025",
+        term: (course.term || "").trim() || "N/A",
+        section: (course.section || "").trim() || "N/A",
         status: course.isActive ? "Active" : "Inactive",
 
         evaluationId: ensureRes?.evaluationId || null,
@@ -70,6 +68,7 @@ export async function renderDashboard(navigate) {
     { key: "course", label: "Course" },
     { key: "instructor", label: "Instructor" },
     { key: "term", label: "Term" },
+    { key: "section", label: "Section" },
     { key: "status", label: "Status" },
     {
       key: "action",
@@ -86,9 +85,7 @@ export async function renderDashboard(navigate) {
         if (row.hasSubmitted) {
           return createButton("View", "secondary", () => {
             showToast(`Opening submitted evaluation for ${row.course}`, "info", 1200);
-            navigate(
-              `/evaluate?evaluationId=${encodeURIComponent(row.evaluationId)}&mode=view`
-            );
+            navigate(`/evaluate?evaluationId=${encodeURIComponent(row.evaluationId)}&mode=view`);
           });
         }
 

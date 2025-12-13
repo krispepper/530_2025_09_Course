@@ -41,3 +41,57 @@ export function showModal(title, message) {
   overlay.appendChild(dialog);
   root.appendChild(overlay);
 }
+
+export function showLargeModal(title, contentNode, onClose, closeLabel = "Back to Reports") {
+  const root = ensureModalRoot();
+  root.innerHTML = "";
+
+  const overlay = createElement("div", "modal-overlay");
+
+  const dialog = createElement("div", "modal-dialog modal-dialog-large");
+
+  const header = createElement("div", "modal-header");
+  const h = createElement("h3", "modal-title", title || "Details");
+
+  const xBtn = createElement("button", "modal-x", "×");
+  xBtn.type = "button";
+  xBtn.addEventListener("click", () => {
+    root.innerHTML = "";
+    if (typeof onClose === "function") onClose();
+  });
+
+  header.appendChild(h);
+  header.appendChild(xBtn);
+
+  const body = createElement("div", "modal-body modal-body-scroll");
+  if (contentNode) body.appendChild(contentNode);
+
+  const actions = createElement("div", "modal-actions");
+  const closeBtn = createElement("button", "btn btn-secondary", closeLabel);
+
+  closeBtn.type = "button";
+  closeBtn.addEventListener("click", () => {
+    root.innerHTML = "";
+    if (typeof onClose === "function") onClose();
+  });
+
+  actions.appendChild(closeBtn);
+
+  overlay.addEventListener("click", () => {
+    root.innerHTML = "";
+    if (typeof onClose === "function") onClose();
+  });
+  dialog.addEventListener("click", (e) => e.stopPropagation());
+
+  dialog.appendChild(header);
+  dialog.appendChild(body);
+  dialog.appendChild(actions);
+
+  overlay.appendChild(dialog);
+  root.appendChild(overlay);
+}
+
+export function closeModal() {
+  const root = ensureModalRoot();
+  root.innerHTML = "";
+}

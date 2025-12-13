@@ -4,11 +4,13 @@ import { createTable } from "../components/table.js";
 import { instructorCourseService } from "../services/instructorCourseService.js";
 import { authService } from "../services/authService.js";
 
-export async function renderInstructorCourses() {
+export async function renderInstructorCourses(navigate) {
+  const go = typeof navigate === "function" ? navigate : () => {};
+
   const user = await authService.getCurrentUser();
 
   if (!user || user.role !== "instructor") {
-    navigate("/dashboard");
+    go("/dashboard");
     return;
   }
 
@@ -30,23 +32,44 @@ export async function renderInstructorCourses() {
   const card = createCard("Instructor Course Management", wrapper);
   content.appendChild(card);
 
-  loadCourses();
+  await loadCourses();
 
   async function loadCourses() {
-    const res = await instructorCourseService.getMyCourses();
-    if (!res.courses) return;
-
     tableRegion.innerHTML = "";
+
+    let res;
+    try {
+      res = await instructorCourseService.getMyCourses();
+    } catch (err) {
+      console.error("Failed to load instructor courses:", err);
+      tableRegion.appendChild(
+        createElement("p", "empty-state", err?.data?.message || err?.message || "Failed to load courses")
+      );
+      return;
+    }
+
+    const courses = res?.courses || [];
+
+    if (courses.length === 0) {
+      tableRegion.appendChild(
+        createElement("p", "empty-state", "No courses found. Click “Create Course” to add one.")
+      );
+      return;
+    }
 
     const columns = [
       { key: "courseName", label: "Course Name" },
       { key: "courseCode", label: "Course Code" },
+      { key: "term", label: "Term" },
+      { key: "section", label: "Section" },
       { key: "isActive", label: "Status" },
       { key: "actions", label: "Actions" }
     ];
 
-    const tableData = res.courses.map(course => ({
+    const tableData = courses.map((course) => ({
       ...course,
+      term: (course.term || "").trim() || "N/A",
+      section: (course.section || "").trim() || "N/A",
       isActive: course.isActive ? "Active" : "Inactive",
       actions: "Actions"
     }));
@@ -55,7 +78,7 @@ export async function renderInstructorCourses() {
     const rows = table.querySelectorAll("tbody tr");
 
     rows.forEach((row, i) => {
-      const course = res.courses[i];
+      const course = courses[i];
       row.lastChild.innerHTML = "";
 
       const editBtn = createElement("button", "btn-sm", "Update");
@@ -63,13 +86,10 @@ export async function renderInstructorCourses() {
 
       const deleteBtn = createElement("button", "btn-sm-danger", "Delete");
       deleteBtn.onclick = () => {
-        showConfirmModal(
-          `Are you sure you want to delete "${course.courseName}"?`,
-          async () => {
-            await instructorCourseService.deleteCourse(course._id);
-            loadCourses();
-          }
-        );
+        showConfirmModal(`Are you sure you want to delete "${course.courseName}"?`, async () => {
+          await instructorCourseService.deleteCourse(course._id);
+          await loadCourses();
+        });
       };
 
       row.lastChild.append(editBtn, deleteBtn);
@@ -85,30 +105,29 @@ export async function renderInstructorCourses() {
     const backdrop = createElement("div", "modal-backdrop");
     const modal = createElement("div", "modal");
 
-    const heading = createElement(
-      "h3",
-      null,
-      course ? "Update Course" : "Create Course"
-    );
+    const heading = createElement("h3", null, course ? "Update Course" : "Create Course");
 
     const name = createElement("input");
     name.placeholder = "Course Name";
     name.value = course?.courseName || "";
 
     const code = createElement("input");
-    code.placeholder = "Course Code";
+    code.placeholder = "Course Code (e.g., CS530)";
     code.value = course?.courseCode || "";
+
+    const term = createElement("input");
+    term.placeholder = "Term (e.g., Fall 2025)";
+    term.value = course?.term || "";
+
+    const section = createElement("input");
+    section.placeholder = "Section (e.g., 001)";
+    section.value = course?.section || "";
 
     const desc = createElement("textarea");
     desc.placeholder = "Description";
     desc.value = course?.description || "";
 
-    const submitBtn = createElement(
-      "button",
-      "btn-primary",
-      course ? "Update" : "Create"
-    );
-
+    const submitBtn = createElement("button", "btn-primary", course ? "Update" : "Create");
     const cancelBtn = createElement("button", "btn-secondary", "Cancel");
 
     cancelBtn.onclick = () => {
@@ -116,46 +135,38 @@ export async function renderInstructorCourses() {
     };
 
     submitBtn.onclick = async () => {
-      if (!name.value || !code.value) {
-        alert("Course name and code are required");
+      const payload = {
+        courseName: name.value.trim(),
+        courseCode: code.value.trim(),
+        term: term.value.trim(),
+        section: section.value.trim(),
+        description: desc.value.trim()
+      };
+
+      if (!payload.courseName || !payload.courseCode || !payload.term || !payload.section) {
+        alert("Course name, code, term, and section are required");
         return;
       }
 
       showConfirmModal(
-        course
-          ? "Are you sure you want to update this course?"
-          : "Are you sure you want to create this course?",
+        course ? "Are you sure you want to update this course?" : "Are you sure you want to create this course?",
         async () => {
           if (course) {
             await instructorCourseService.updateCourse(course._id, {
-              courseName: name.value,
-              courseCode: code.value,
-              description: desc.value,
+              ...payload,
               isActive: course.isActive
             });
           } else {
-            await instructorCourseService.createCourse({
-              courseName: name.value,
-              courseCode: code.value,
-              description: desc.value
-            });
+            await instructorCourseService.createCourse(payload);
           }
 
           modalRoot.innerHTML = "";
-          loadCourses();
+          await loadCourses();
         }
       );
     };
 
-    modal.append(
-      heading,
-      name,
-      code,
-      desc,
-      submitBtn,
-      cancelBtn
-    );
-
+    modal.append(heading, name, code, term, section, desc, submitBtn, cancelBtn);
     backdrop.appendChild(modal);
     modalRoot.appendChild(backdrop);
 

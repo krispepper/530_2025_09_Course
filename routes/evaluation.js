@@ -11,7 +11,6 @@ const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 /**
  * POST /api/evaluations
- * Create evaluation (Instructor/Admin)  ✅ required by UAT tests
  */
 router.post("/", isAuthenticated, hasRole("instructor", "admin"), async (req, res) => {
   try {
@@ -37,7 +36,6 @@ router.post("/", isAuthenticated, hasRole("instructor", "admin"), async (req, re
     const course = await Course.findById(courseId);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
-    // Instructor can create only for own course (admin can create for any)
     if (req.session.userRole === "instructor" && String(course.instructor) !== String(req.session.userId)) {
       return res.status(403).json({ message: "You can only create evaluations for your own courses" });
     }
@@ -82,7 +80,6 @@ router.post("/", isAuthenticated, hasRole("instructor", "admin"), async (req, re
 
 /**
  * GET /api/evaluations
- * Role-based list ✅ required by UAT tests
  */
 router.get("/", isAuthenticated, async (req, res) => {
   try {
@@ -97,7 +94,6 @@ router.get("/", isAuthenticated, async (req, res) => {
         .populate("instructor", "email role")
         .sort({ createdAt: -1 });
 
-      // attach hasSubmitted + isOpen
       const evaluationsWithStatus = await Promise.all(
         evaluations.map(async (ev) => {
           const existing = await Response.findOne({ evaluation: ev._id, submittedBy: req.session.userId });
@@ -133,8 +129,6 @@ router.get("/", isAuthenticated, async (req, res) => {
 
 /**
  * POST /api/evaluations/ensure
- * Student: create default evaluation if missing (your feature) ✅
- * Also includes Option B (update questions if no responses exist yet)
  */
 router.post("/ensure", isAuthenticated, hasRole("student"), async (req, res) => {
   try {
@@ -299,7 +293,7 @@ router.post("/:id/submit", isAuthenticated, hasRole("student"), async (req, res)
 });
 
 /**
- * GET /api/evaluations/:id/results  ✅ required by UAT tests
+ * GET /api/evaluations/:id/results 
  * Instructor/Admin only
  */
 router.get("/:id/results", isAuthenticated, hasRole("instructor", "admin"), async (req, res) => {
@@ -307,7 +301,10 @@ router.get("/:id/results", isAuthenticated, hasRole("instructor", "admin"), asyn
     const { id } = req.params;
     if (!isValidObjectId(id)) return res.status(400).json({ message: "Invalid evaluation id" });
 
-    const evaluation = await Evaluation.findById(id).populate("course", "courseName courseCode");
+    const evaluation = await Evaluation.findById(id).populate(
+      "course",
+      "courseName courseCode term section"
+    );
     if (!evaluation) return res.status(404).json({ message: "Evaluation not found" });
 
     if (req.session.userRole === "instructor" && String(evaluation.instructor) !== String(req.session.userId)) {
@@ -318,7 +315,6 @@ router.get("/:id/results", isAuthenticated, hasRole("instructor", "admin"), asyn
       .populate("submittedBy", "email role")
       .sort({ submittedAt: -1 });
 
-    // rating stats
     const statistics = {};
     evaluation.questions.forEach((q) => {
       if (q.questionType !== "rating") return;
@@ -351,9 +347,10 @@ router.get("/:id/results", isAuthenticated, hasRole("instructor", "admin"), asyn
     return res.json({
       evaluation,
       totalResponses: responses.length,
-      responses: evaluation.evaluationType === "anonymous"
-        ? responses.map((r) => ({ ...r.toObject(), submittedBy: null }))
-        : responses,
+      responses:
+        evaluation.evaluationType === "anonymous"
+          ? responses.map((r) => ({ ...r.toObject(), submittedBy: null }))
+          : responses,
       statistics
     });
   } catch (err) {

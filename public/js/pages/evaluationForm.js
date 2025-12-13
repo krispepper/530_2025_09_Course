@@ -7,7 +7,7 @@ import { mockEnrollments } from "../data/mockEnrollments.js";
 import { authService } from "../services/authService.js";
 import { evaluationService } from "../services/evaluationService.js";
 
-export async function renderEvaluate(navigate) {
+export async function renderEvaluate(navigate, opts = {}) {
   const go = typeof navigate === "function" ? navigate : () => {};
 
   const user = await authService.getCurrentUser();
@@ -16,15 +16,16 @@ export async function renderEvaluate(navigate) {
     return;
   }
 
-  const content = $("#app-content");
-  content.innerHTML = "";
+  const mountNode = opts.mountNode || $("#app-content");
+  if (!mountNode) return;
+  mountNode.innerHTML = "";
 
   const params = new URLSearchParams(window.location.search);
-  const courseId = params.get("courseId");
-  const evaluationId = params.get("evaluationId");
-  const mode = params.get("mode") || "edit";
-  const isViewOnly = mode === "view";
-
+  const courseId = opts.courseId ?? params.get("courseId");
+  const evaluationId = opts.evaluationId ?? params.get("evaluationId");
+  const mode = opts.mode ?? params.get("mode") ?? "edit";
+  const responseId = opts.responseId ?? params.get("responseId");
+  const isViewOnly = mode === "view" || mode === "adminView";
 
   const sections = [
     {
@@ -69,14 +70,13 @@ export async function renderEvaluate(navigate) {
     }
   ];
 
-
   let evaluation = null;
   let questions = [];
-  let dbQuestions = []; 
+  let dbQuestions = [];
   let myResponse = null;
 
   const demoEnrollment =
-    mockEnrollments?.find((c) => c.courseId === courseId) || null;
+    mockEnrollments?.find((c) => String(c.courseId) === String(courseId)) || null;
 
   const fallbackHeader = {
     title: demoEnrollment ? demoEnrollment.course : "Selected Course (Demo)",
@@ -90,18 +90,35 @@ export async function renderEvaluate(navigate) {
       const evaluationRes = await evaluationService.getEvaluation(evaluationId);
       evaluation = evaluationRes?.evaluation || evaluationRes;
 
-      dbQuestions = Array.isArray(evaluation?.questions)
-        ? evaluation.questions
-        : [];
+      dbQuestions = Array.isArray(evaluation?.questions) ? evaluation.questions : [];
 
       if (isViewOnly) {
-        const resp = await evaluationService.getMyResponse(evaluationId);
-        myResponse = resp?.response || null;
+        if (mode === "view") {
+          const resp = await evaluationService.getMyResponse(evaluationId);
+          myResponse = resp?.response || null;
+        } else if (mode === "adminView") {
+          if (!responseId) {
+            showModal("Missing submission", "responseId is missing.");
+            return;
+          }
+
+          if (user.role !== "admin" && user.role !== "instructor") {
+            showModal("Not allowed", "You do not have permission to view this submission.");
+            return;
+          }
+
+          const sub = await evaluationService.getSubmissionByResponseId(evaluationId, responseId);
+          myResponse = sub?.response || null;
+
+          if (!myResponse) {
+            showModal("Submission not found", "That student's submission could not be found.");
+            return;
+          }
+        }
       }
 
       if (dbQuestions.length === 0) {
         showModal("No questions found", "This evaluation has no questions configured.");
-        go("/dashboard");
         return;
       }
 
@@ -118,12 +135,10 @@ export async function renderEvaluate(navigate) {
 
       questions = dbQuestions.map((q, idx) => {
         const isText = q.questionType === "text";
-        const sectionId = isText
-          ? "comments"
-          : (sectionOrder[idx] || "course-structure");
+        const sectionId = isText ? "comments" : sectionOrder[idx] || "course-structure";
 
         return {
-          name: String(q._id),              
+          name: String(q._id),
           label: `${q.questionText}${q.isRequired ? " *" : ""}`,
           sectionId,
           questionType: q.questionType || "rating",
@@ -142,25 +157,9 @@ export async function renderEvaluate(navigate) {
         });
       }
     } catch (err) {
-      showModal(
-        "Failed to load evaluation",
-        err?.data?.message || "Please try again."
-      );
-      go("/dashboard");
+      showModal("Failed to load evaluation", err?.data?.message || "Please try again.");
       return;
     }
-  } else {
-    questions = [
-      { name: "q1", label: "The course content was well organized. *", sectionId: "course-structure", questionType: "rating", isRequired: true },
-      { name: "q2", label: "The instructor clearly explained course concepts. *", sectionId: "course-structure", questionType: "rating", isRequired: true },
-      { name: "q3", label: "Feedback on assignments and assessments helped me improve my learning. *", sectionId: "learning-support", questionType: "rating", isRequired: true },
-      { name: "q4", label: "Overall, I would recommend this course to other students. *", sectionId: "learning-support", questionType: "rating", isRequired: true },
-      { name: "q5", label: "Class activities and discussions helped me stay engaged with the course material. *", sectionId: "engagement", questionType: "rating", isRequired: true },
-      { name: "q6", label: "The instructor encouraged student participation and questions. *", sectionId: "engagement", questionType: "rating", isRequired: true },
-      { name: "q7", label: "The course materials (e.g., slides, readings, videos) supported my learning effectively. *", sectionId: "materials", questionType: "rating", isRequired: true },
-      { name: "q8", label: "Online resources and tools used in this course were easy to access and use. *", sectionId: "materials", questionType: "rating", isRequired: true },
-      { name: "comments", label: "Additional comments on the course and instruction *", sectionId: "comments", questionType: "text", isRequired: true }
-    ];
   }
 
   const form = createElement("form", "form");
@@ -172,10 +171,7 @@ export async function renderEvaluate(navigate) {
   const headerWrapper = createElement("div", "evaluation-header");
 
   const headerMainText =
-    evaluation?.title ||
-    evaluation?.course?.courseName ||
-    fallbackHeader.title;
-
+    evaluation?.title || evaluation?.course?.courseName || fallbackHeader.title;
   const headerMain = createElement("div", "evaluation-header-main", headerMainText);
 
   const headerSubText =
@@ -189,7 +185,7 @@ export async function renderEvaluate(navigate) {
     "p",
     "evaluation-header-note",
     isViewOnly
-      ? "This is a read-only view of your submitted evaluation."
+      ? "This is a read-only view of the submitted evaluation."
       : "Please respond to all required items marked with an asterisk (*)."
   );
 
@@ -222,8 +218,12 @@ export async function renderEvaluate(navigate) {
 
   if (isViewOnly && myResponse?.answers?.length) {
     myResponse.answers.forEach((a) => {
-      if (a.questionId) answers[String(a.questionId)] = String(a.answerValue ?? "");
+      if (a.questionId !== undefined && a.questionId !== null) {
+        answers[String(a.questionId)] = String(a.answerValue ?? "");
+      }
     });
+    const comment = myResponse.answers.find((a) => String(a.questionId) === "__comments__");
+    if (comment) answers["__comments__"] = String(comment.answerValue ?? "");
   }
 
   function updateSectionProgress(sectionId) {
@@ -267,7 +267,6 @@ export async function renderEvaluate(navigate) {
     titleWrapper.appendChild(desc);
 
     const metaWrapper = createElement("div", "evaluation-section-meta");
-
     const progressLabel = createElement("span", "evaluation-section-progress", "0/0 answered");
     const tooltipIcon = createElement("span", "evaluation-section-tooltip", "?");
     tooltipIcon.setAttribute("title", section.tooltip);
@@ -370,11 +369,18 @@ export async function renderEvaluate(navigate) {
     submitBtn.textContent = "Submit Evaluation";
     actions.appendChild(submitBtn);
   } else {
-    const backBtn = createElement("button", "btn btn-secondary");
-    backBtn.type = "button";
-    backBtn.textContent = "Back to Dashboard";
-    backBtn.addEventListener("click", () => go("/dashboard"));
-    actions.appendChild(backBtn);
+    if (!opts.mountNode) {
+      const backBtn = createElement("button", "btn btn-secondary");
+      backBtn.type = "button";
+      backBtn.textContent = mode === "adminView" ? "Back to Reports" : "Back to Dashboard";
+
+      backBtn.addEventListener("click", () => {
+        if (mode === "adminView") return go("/admin/reports");
+        return go("/dashboard");
+      });
+
+      actions.appendChild(backBtn);
+    }
   }
 
   form.appendChild(actions);
@@ -417,21 +423,8 @@ export async function renderEvaluate(navigate) {
 
     errorSummary.style.display = "none";
 
-    if (!evaluationId) {
-      showModal(
-        "Thank you for your feedback",
-        "Your course evaluation has been recorded for this demonstration."
-      );
-
-      form.reset();
-      Object.keys(answers).forEach((k) => (answers[k] = ""));
-      sections.forEach((s) => updateSectionProgress(s.id));
-      updateOverallProgress();
-      return;
-    }
-
     const payloadAnswers = questions
-      .filter((q) => q.name !== "__comments__") 
+      .filter((q) => q.name !== "__comments__")
       .map((q) => {
         const dbQ = dbQuestions.find((x) => String(x._id) === String(q.name));
         return {
@@ -453,9 +446,7 @@ export async function renderEvaluate(navigate) {
 
     try {
       await evaluationService.submitEvaluation(evaluationId, { answers: payloadAnswers });
-
       showModal("Thank you for your feedback", "Your evaluation has been submitted successfully.");
-
       go("/dashboard");
     } catch (err) {
       showModal("Submission blocked", err?.data?.message || "Server error while submitting response.");
@@ -463,9 +454,13 @@ export async function renderEvaluate(navigate) {
     }
   });
 
-  const wrapper = createElement("div");
-  wrapper.appendChild(form);
+  const card = createCard("Course Evaluation Form", form);
 
-  const card = createCard("Course Evaluation Form", wrapper);
-  content.appendChild(card);
+  if (opts.mountNode) {
+    const scrollWrap = createElement("div", "evaluation-modal-scroll");
+    scrollWrap.appendChild(card);
+    mountNode.appendChild(scrollWrap);
+  } else {
+    mountNode.appendChild(card);
+  }
 }
