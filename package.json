@@ -5,7 +5,12 @@
   "main": "server.js",
   "scripts": {
     "test": "jest --runInBand",
+<<<<<<< Updated upstream
     "start": "node server.js"
+=======
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+>>>>>>> Stashed changes
   },
   "keywords": [],
   "author": "",
@@ -19,6 +24,10 @@
     "jsdom": "^22.1.0",
     "mongodb": "^7.0.0",
     "mongoose": "^9.0.0",
+<<<<<<< Updated upstream
+=======
+    "nodemon": "^3.1.11",
+>>>>>>> Stashed changes
     "tr46": "^6.0.0",
     "webidl-conversions": "^8.0.0",
     "whatwg-url": "^15.1.0"

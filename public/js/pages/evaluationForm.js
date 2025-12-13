@@ -3,7 +3,10 @@ import { createInput } from "../components/input.js";
 import { createRadioGroup } from "../components/radioGroup.js";
 import { createCard } from "../components/card.js";
 import { showModal } from "../components/modal.js";
+<<<<<<< Updated upstream
 import { mockEnrollments } from "../data/mockEnrollments.js";
+=======
+>>>>>>> Stashed changes
 import { authService } from "../services/authService.js";
 import { evaluationService } from "../services/evaluationService.js";
 
@@ -20,10 +23,17 @@ export async function renderEvaluate(navigate) {
   content.innerHTML = "";
 
   const params = new URLSearchParams(window.location.search);
+<<<<<<< Updated upstream
   const courseId = params.get("courseId");
   const evaluationId = params.get("evaluationId");
   const mode = params.get("mode") || "edit";
   const isViewOnly = mode === "view";
+=======
+  const courseId = params.get("courseId");
+  const evaluationId = params.get("evaluationId");
+  const mode = params.get("mode") || "edit";
+  const isViewOnly = mode === "view";
+>>>>>>> Stashed changes
 
 
   const sections = [
@@ -70,6 +80,7 @@ export async function renderEvaluate(navigate) {
   ];
 
 
+<<<<<<< Updated upstream
   let evaluation = null;
   let questions = [];
   let dbQuestions = []; 
@@ -89,6 +100,23 @@ export async function renderEvaluate(navigate) {
     try {
       const evaluationRes = await evaluationService.getEvaluation(evaluationId);
       evaluation = evaluationRes?.evaluation || evaluationRes;
+=======
+  if (!evaluationId) {
+    showModal("Evaluation not available", "A valid evaluation ID is required.");
+    go("/dashboard");
+    return;
+  }
+
+  let evaluation = null;
+  let questions = [];
+  let dbQuestions = []; 
+  let myResponse = null;
+
+  if (evaluationId) {
+    try {
+      const evaluationRes = await evaluationService.getEvaluation(evaluationId);
+      evaluation = evaluationRes?.evaluation || evaluationRes;
+>>>>>>> Stashed changes
 
       dbQuestions = Array.isArray(evaluation?.questions)
         ? evaluation.questions
@@ -131,6 +159,7 @@ export async function renderEvaluate(navigate) {
         };
       });
 
+<<<<<<< Updated upstream
       const hasComments = questions.some((q) => q.sectionId === "comments");
       if (!hasComments) {
         questions.push({
@@ -162,6 +191,18 @@ export async function renderEvaluate(navigate) {
       { name: "comments", label: "Additional comments on the course and instruction *", sectionId: "comments", questionType: "text", isRequired: true }
     ];
   }
+=======
+      // Use only questions from the server; do not add synthetic fields
+    } catch (err) {
+      showModal(
+        "Failed to load evaluation",
+        err?.data?.message || "Please try again."
+      );
+      go("/dashboard");
+      return;
+    }
+  }
+>>>>>>> Stashed changes
 
   const form = createElement("form", "form");
 
@@ -171,6 +212,7 @@ export async function renderEvaluate(navigate) {
 
   const headerWrapper = createElement("div", "evaluation-header");
 
+<<<<<<< Updated upstream
   const headerMainText =
     evaluation?.title ||
     evaluation?.course?.courseName ||
@@ -182,6 +224,19 @@ export async function renderEvaluate(navigate) {
     evaluation?.course?.courseName
       ? `${evaluation.course.courseName}${evaluation.course.courseCode ? ` (${evaluation.course.courseCode})` : ""}  •  Instructor: ${evaluation?.instructor?.email || "Instructor"}`
       : fallbackHeader.subtitle;
+=======
+  const headerMainText =
+    evaluation?.title ||
+    evaluation?.course?.courseName ||
+    "Course Evaluation";
+
+  const headerMain = createElement("div", "evaluation-header-main", headerMainText);
+
+  const headerSubText =
+    evaluation?.course?.courseName
+      ? `${evaluation.course.courseName}${evaluation.course.courseCode ? ` (${evaluation.course.courseCode})` : ""}  •  Instructor: ${evaluation?.instructor?.email || "Instructor"}`
+      : "";
+>>>>>>> Stashed changes
 
   const headerSub = createElement("div", "evaluation-header-sub", headerSubText);
 
@@ -417,6 +472,7 @@ export async function renderEvaluate(navigate) {
 
     errorSummary.style.display = "none";
 
+<<<<<<< Updated upstream
     if (!evaluationId) {
       showModal(
         "Thank you for your feedback",
@@ -450,6 +506,18 @@ export async function renderEvaluate(navigate) {
         answerValue: String(answers["__comments__"] || "")
       });
     }
+=======
+    const payloadAnswers = questions
+      .map((q) => {
+        const dbQ = dbQuestions.find((x) => String(x._id) === String(q.name));
+        return {
+          questionId: String(q.name),
+          questionText: dbQ?.questionText || q.label.replace(/\s*\*$/, ""),
+          questionType: dbQ?.questionType || q.questionType,
+          answerValue: String(answers[q.name] || "")
+        };
+      });
+>>>>>>> Stashed changes
 
     try {
       await evaluationService.submitEvaluation(evaluationId, { answers: payloadAnswers });
@@ -468,4 +536,8 @@ export async function renderEvaluate(navigate) {
 
   const card = createCard("Course Evaluation Form", wrapper);
   content.appendChild(card);
+<<<<<<< Updated upstream
 }
+=======
+}
+>>>>>>> Stashed changes

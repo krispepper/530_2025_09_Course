@@ -1,6 +1,7 @@
 import { $, createElement } from "../components/domUtils.js";
 import { createCard } from "../components/card.js";
 import { createTable } from "../components/table.js";
+<<<<<<< Updated upstream
 import { instructorCourseService } from "../services/instructorCourseService.js";
 import { authService } from "../services/authService.js";
 
@@ -11,6 +12,19 @@ export async function renderInstructorCourses() {
     navigate("/dashboard");
     return;
   }
+=======
+import { instructorCourseService } from "../services/instructorCourseService.js";
+import { authService } from "../services/authService.js";
+
+export async function renderInstructorCourses(navigate) {
+  const go = typeof navigate === "function" ? navigate : (p) => (window.history.pushState({}, "", p), window.dispatchEvent(new PopStateEvent("popstate")));
+  const user = await authService.getCurrentUser();
+
+  if (!user || user.role !== "instructor") {
+    go("/dashboard");
+    return;
+  }
+>>>>>>> Stashed changes
 
   const content = $("#app-content");
   content.innerHTML = "";
@@ -61,7 +75,11 @@ export async function renderInstructorCourses() {
       const editBtn = createElement("button", "btn-sm", "Update");
       editBtn.onclick = () => openCourseModal(course);
 
+<<<<<<< Updated upstream
       const deleteBtn = createElement("button", "btn-sm-danger", "Delete");
+=======
+      const deleteBtn = createElement("button", "btn-sm-danger", "Delete");
+>>>>>>> Stashed changes
       deleteBtn.onclick = () => {
         showConfirmModal(
           `Are you sure you want to delete "${course.courseName}"?`,
@@ -72,7 +90,11 @@ export async function renderInstructorCourses() {
         );
       };
 
+<<<<<<< Updated upstream
       row.lastChild.append(editBtn, deleteBtn);
+=======
+      row.lastChild.append(editBtn, deleteBtn);
+>>>>>>> Stashed changes
     });
 
     tableRegion.appendChild(table);

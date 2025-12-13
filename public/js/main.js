@@ -66,9 +66,15 @@ function updateNavVisibility(user) {
     dashboardLink?.classList.remove("hidden");
   }
 
+<<<<<<< Updated upstream
   if (user.role === "instructor") {
     instructorLink?.classList.remove("hidden");
   }
+=======
+  if (user.role === "instructor") {
+    instructorLink?.classList.remove("hidden");
+  }
+>>>>>>> Stashed changes
 
   if (user.role === "admin") {
     adminReportsLink?.classList.remove("hidden");
