@@ -4,6 +4,9 @@ const router = express.Router();
 
 const Course = require("../models/Course");
 const User = require("../models/User");
+const Evaluation = require("../models/Evaluation");
+const Response = require("../models/Response");
+
 const { isAuthenticated, hasRole } = require("../middleware/auth");
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -262,5 +265,107 @@ router.post("/:id/remove", isAuthenticated, hasRole("admin"), async (req, res) =
     return res.status(500).json({ message: "Server error while removing student" });
   }
 });
+
+/**
+ * @access Instructor (own course) or Admin
+ */
+router.get("/:id/students", isAuthenticated, hasRole("instructor", "admin"), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) return res.status(404).json({ message: "Course not found" });
+
+    const course = await Course.findById(id).populate("students", "email role");
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    if (req.session.userRole === "instructor" && course.instructor.toString() !== req.session.userId) {
+      return res.status(403).json({ message: "You can only view students for your own courses" });
+    }
+
+    const evaluation = await Evaluation.findOne({ course: id }).sort({ createdAt: -1 });
+
+    if (!evaluation) {
+      const students = (course.students || []).map((s) => ({
+        studentId: s._id,
+        email: s.email,
+        hasSubmitted: false,
+        responseId: null
+      }));
+      return res.json({ evaluationId: null, students });
+    }
+
+    const responses = await Response.find({ evaluation: evaluation._id })
+      .select("_id submittedBy student")
+      .lean();
+
+    const byUser = new Map();
+    responses.forEach((r) => {
+      const uid = String(r.submittedBy || r.student || "");
+      if (uid) byUser.set(uid, r);
+    });
+
+    const students = (course.students || []).map((s) => {
+      const r = byUser.get(String(s._id));
+      return {
+        studentId: s._id,
+        email: s.email,
+        hasSubmitted: !!r,
+        responseId: r ? r._id : null
+      };
+    });
+
+    return res.json({ evaluationId: evaluation._id, students });
+  } catch (error) {
+    console.error("Get Course Students Error:", error);
+    return res.status(500).json({ message: "Server error while fetching students" });
+  }
+});
+
+/**
+ * @access Instructor (own course) or Admin
+ */
+router.get(
+  "/:id/students/:studentId/submission",
+  isAuthenticated,
+  hasRole("instructor", "admin"),
+  async (req, res) => {
+    try {
+      const { id, studentId } = req.params;
+
+      if (!isValidObjectId(id)) return res.status(404).json({ message: "Course not found" });
+      if (!isValidObjectId(studentId)) return res.status(404).json({ message: "Student not found" });
+
+      const course = await Course.findById(id);
+      if (!course) return res.status(404).json({ message: "Course not found" });
+
+      if (req.session.userRole === "instructor" && course.instructor.toString() !== req.session.userId) {
+        return res.status(403).json({ message: "You can only view submissions for your own courses" });
+      }
+
+      const evaluation = await Evaluation.findOne({ course: id }).sort({ createdAt: -1 });
+      if (!evaluation) {
+        return res.json({ hasSubmitted: false, evaluationId: null, responseId: null });
+      }
+
+      const resp = await Response.findOne({
+        evaluation: evaluation._id,
+        $or: [{ submittedBy: studentId }, { student: studentId }]
+      }).lean();
+
+      if (!resp) {
+        return res.json({ hasSubmitted: false, evaluationId: evaluation._id, responseId: null });
+      }
+
+      return res.json({
+        hasSubmitted: true,
+        evaluationId: evaluation._id,
+        responseId: resp._id
+      });
+    } catch (error) {
+      console.error("Get Student Submission Error:", error);
+      return res.status(500).json({ message: "Server error while fetching submission" });
+    }
+  }
+);
 
 module.exports = router;

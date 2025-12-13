@@ -3,6 +3,7 @@ import { createCard } from "../components/card.js";
 import { createTable } from "../components/table.js";
 import { instructorCourseService } from "../services/instructorCourseService.js";
 import { authService } from "../services/authService.js";
+import { renderEvaluate } from "./evaluationForm.js";
 
 export async function renderInstructorCourses(navigate) {
   const go = typeof navigate === "function" ? navigate : () => {};
@@ -43,7 +44,11 @@ export async function renderInstructorCourses(navigate) {
     } catch (err) {
       console.error("Failed to load instructor courses:", err);
       tableRegion.appendChild(
-        createElement("p", "empty-state", err?.data?.message || err?.message || "Failed to load courses")
+        createElement(
+          "p",
+          "empty-state",
+          err?.data?.message || err?.message || "Failed to load courses"
+        )
       );
       return;
     }
@@ -52,7 +57,11 @@ export async function renderInstructorCourses(navigate) {
 
     if (courses.length === 0) {
       tableRegion.appendChild(
-        createElement("p", "empty-state", "No courses found. Click “Create Course” to add one.")
+        createElement(
+          "p",
+          "empty-state",
+          "No courses found. Click “Create Course” to add one."
+        )
       );
       return;
     }
@@ -92,10 +101,167 @@ export async function renderInstructorCourses(navigate) {
         });
       };
 
-      row.lastChild.append(editBtn, deleteBtn);
+      const viewStudentsBtn = createElement("button", "btn-sm", "View Students");
+      viewStudentsBtn.onclick = () => openStudentsModal(course);
+
+      row.lastChild.append(editBtn, deleteBtn, viewStudentsBtn);
     });
 
     tableRegion.appendChild(table);
+  }
+
+  async function openStudentsModal(course) {
+    const modalRoot = $("#modal-root");
+    modalRoot.innerHTML = "";
+
+    const backdrop = createElement("div", "modal-backdrop");
+    const modal = createElement("div", "modal");
+    modal.classList.add("admin-report-modal");
+
+    const header = createElement("div", "modal-header");
+    const heading = createElement("h3", null, `Enrolled Students - ${course.courseName}`);
+
+    const xBtn = createElement("button", "modal-close", "×");
+    xBtn.type = "button";
+    xBtn.onclick = () => {
+      modalRoot.innerHTML = "";
+    };
+
+    header.appendChild(heading);
+    header.appendChild(xBtn);
+
+    const body = createElement("div", "modal-body");
+    body.textContent = "Loading...";
+
+    const footer = createElement("div", "modal-footer");
+    const closeBtn = createElement("button", "btn-secondary", "Close");
+    closeBtn.type = "button";
+    closeBtn.onclick = () => {
+      modalRoot.innerHTML = "";
+    };
+    footer.appendChild(closeBtn);
+
+    modal.append(header, body, footer);
+    backdrop.appendChild(modal);
+    modalRoot.appendChild(backdrop);
+
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) modalRoot.innerHTML = "";
+    });
+
+    let res;
+    try {
+      res = await instructorCourseService.getCourseStudents(course._id);
+    } catch (err) {
+      console.error("Failed to load students:", err);
+      body.innerHTML = "";
+      body.appendChild(
+        createElement(
+          "p",
+          "empty-state",
+          err?.data?.message || err?.message || "Failed to load students"
+        )
+      );
+      return;
+    }
+
+    const students = res?.students || [];
+    const evaluationId = res?.evaluationId || null;
+
+    body.innerHTML = "";
+
+    if (students.length === 0) {
+      body.appendChild(createElement("p", "empty-state", "No students enrolled in this course."));
+      return;
+    }
+
+    const columns = [
+      { key: "email", label: "Student Email" },
+      { key: "status", label: "Evaluation Status" },
+      { key: "actions", label: "Actions" }
+    ];
+
+    const tableData = students.map((s) => ({
+      email: s.email || "N/A",
+      status: s.hasSubmitted ? "Submitted" : "Not submitted",
+      actions: "Actions"
+    }));
+
+    const table = createTable(columns, tableData);
+    const rows = table.querySelectorAll("tbody tr");
+
+    rows.forEach((row, idx) => {
+      const s = students[idx];
+      const actionsCell = row.lastChild;
+      actionsCell.innerHTML = "";
+
+      const viewBtn = createElement("button", "btn-sm", "View");
+
+      const canView = !!(evaluationId && s.hasSubmitted && s.responseId);
+
+      if (!canView) {
+        viewBtn.disabled = true;
+        viewBtn.title = !evaluationId
+          ? "No evaluation exists for this course yet."
+          : "Student has not submitted the evaluation yet.";
+      } else {
+        viewBtn.onclick = async () => {
+          await openSubmissionModal(course, s, evaluationId);
+        };
+      }
+
+      actionsCell.appendChild(viewBtn);
+    });
+
+    body.appendChild(table);
+  }
+
+  async function openSubmissionModal(course, student, evaluationId) {
+    const modalRoot = $("#modal-root");
+    modalRoot.innerHTML = "";
+
+    const backdrop = createElement("div", "modal-backdrop");
+    const modal = createElement("div", "modal");
+    modal.classList.add("admin-report-modal", "modal-large-eval");
+
+    const header = createElement("div", "modal-header");
+    const heading = createElement("h3", null, "View Submitted Evaluation");
+
+    const xBtn = createElement("button", "modal-close", "×");
+    xBtn.type = "button";
+    xBtn.onclick = () => {
+      modalRoot.innerHTML = "";
+    };
+
+    header.appendChild(heading);
+    header.appendChild(xBtn);
+
+    const body = createElement("div", "modal-body");
+    const evalMount = createElement("div", null, "");
+    body.appendChild(evalMount);
+
+    const footer = createElement("div", "modal-footer");
+    const backBtn = createElement("button", "btn-secondary", "Back to Reports");
+    backBtn.type = "button";
+    backBtn.onclick = () => {
+      modalRoot.innerHTML = "";
+    };
+    footer.appendChild(backBtn);
+
+    modal.append(header, body, footer);
+    backdrop.appendChild(modal);
+    modalRoot.appendChild(backdrop);
+
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) modalRoot.innerHTML = "";
+    });
+
+    await renderEvaluate(() => {}, {
+      mountNode: evalMount,
+      evaluationId: evaluationId,
+      mode: "adminView",
+      responseId: student.responseId
+    });
   }
 
   function openCourseModal(course = null) {

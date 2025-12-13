@@ -40,5 +40,9 @@ export const instructorCourseService = {
     return request(`/api/courses/${encodeURIComponent(courseId)}`, {
       method: "DELETE"
     });
+  },
+
+  getCourseStudents(courseId) {
+    return request(`/api/courses/${encodeURIComponent(courseId)}/students`, { method: "GET" });
   }
 };
