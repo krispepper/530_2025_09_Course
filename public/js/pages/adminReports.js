@@ -37,12 +37,8 @@ export async function renderAdminReports(navigate) {
   }
 
   const allCourses = coursesRes?.courses || [];
-  const terms = Array.from(
-    new Set(allCourses.map((c) => (c.term || "").trim()).filter(Boolean))
-  );
-  const courseNames = Array.from(
-    new Set(allCourses.map((c) => (c.courseName || "").trim()).filter(Boolean))
-  );
+  const terms = Array.from(new Set(allCourses.map((c) => (c.term || "").trim()).filter(Boolean)));
+  const courseNames = Array.from(new Set(allCourses.map((c) => (c.courseName || "").trim()).filter(Boolean)));
 
   let selectedTerm = "";
   let selectedCourse = "";
@@ -109,6 +105,132 @@ export async function renderAdminReports(navigate) {
   wrapper.appendChild(tableRegion);
 
   content.appendChild(createCard("Admin Evaluation Reports", wrapper));
+
+  function escapeCSV(value) {
+    const s = value == null ? "" : String(value);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
+
+  function toCSVWithHeaders(headers, objects) {
+    const lines = [
+      headers.map(escapeCSV).join(","),
+      ...objects.map((obj) => headers.map((h) => escapeCSV(obj[h])).join(","))
+    ];
+    return lines.join("\n");
+  }
+
+  function downloadTextFile(filename, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType || "text/plain;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function safeFilePart(value) {
+    return String(value || "")
+      .trim()
+      .replace(/[^\w\-]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+
+  function isPrimitive(v) {
+    return v === null || v === undefined || typeof v === "string" || typeof v === "number" || typeof v === "boolean";
+  }
+
+  function normalizeAnswerValue(v) {
+    if (v === undefined || v === null) return "";
+    if (Array.isArray(v)) return v.map((x) => (isPrimitive(x) ? String(x) : JSON.stringify(x))).join("; ");
+    if (isPrimitive(v)) return String(v);
+    return JSON.stringify(v);
+  }
+
+  function buildAnswerLookupsFromSubmission(r) {
+    const byId = {};
+    const byText = {};
+
+    const arr = Array.isArray(r?.answers) ? r.answers : [];
+    arr.forEach((a) => {
+      const qid = a?.questionId != null ? String(a.questionId) : "";
+      const qtext = (a?.questionText || "").trim();
+
+      const val = a?.answerValue;
+
+      if (qid) byId[qid] = val;
+      if (qtext) byText[qtext] = val;
+    });
+
+    return { byId, byText };
+  }
+
+  function pickAnswerForQuestion(questionItem, lookups) {
+    const qid =
+      questionItem?.questionId ||
+      questionItem?._id ||
+      questionItem?.id ||
+      questionItem?.qid ||
+      questionItem?.question?._id ||
+      questionItem?.question?.id ||
+      null;
+
+    const qtext =
+      (questionItem?.questionText ||
+        questionItem?.question ||
+        questionItem?.prompt ||
+        questionItem?.label ||
+        questionItem?.title ||
+        questionItem?.name ||
+        "")
+        .trim();
+
+    if (qid && lookups?.byId) {
+      const v = lookups.byId[String(qid)];
+      if (v !== undefined && v !== null && !(typeof v === "string" && v.trim() === "")) {
+        return normalizeAnswerValue(v);
+      }
+    }
+
+    if (qtext && lookups?.byText) {
+      const v = lookups.byText[qtext];
+      if (v !== undefined && v !== null && !(typeof v === "string" && v.trim() === "")) {
+        return normalizeAnswerValue(v);
+      }
+    }
+
+    if (questionItem?.answerValue !== undefined) return normalizeAnswerValue(questionItem.answerValue);
+
+    return "";
+  }
+
+  function getQuestionLabel(item, idx) {
+    return (
+      item?.questionText ||
+      item?.question ||
+      item?.prompt ||
+      item?.label ||
+      item?.title ||
+      item?.name ||
+      `Question ${idx + 1}`
+    );
+  }
+
+  function flattenEvaluationAnswersForSubmission(submissionR, evaluationQuestionsArray) {
+    const out = {};
+    const lookups = buildAnswerLookupsFromSubmission(submissionR);
+
+    evaluationQuestionsArray.forEach((qItem, idx) => {
+      const qLabel = getQuestionLabel(qItem, idx);
+      const col = `Q: ${String(qLabel).trim()}`;
+      out[col] = pickAnswerForQuestion(qItem, lookups);
+    });
+
+    return out;
+  }
 
   function applyFilters() {
     return allCourses.filter((c) => {
@@ -312,6 +434,127 @@ export async function renderAdminReports(navigate) {
     body.innerHTML = "";
     body.appendChild(createElement("p", "modal-subtitle", `Term: ${courseRecord.term} | Section: ${courseRecord.section}`));
 
+    const actionsRow = createElement("div", "admin-eval-actions-row");
+    const exportBtn = createElement("button", "btn-sm", "Export (CSV)");
+    exportBtn.type = "button";
+
+    exportBtn.addEventListener("click", async () => {
+      exportBtn.disabled = true;
+      const oldText = exportBtn.textContent;
+      exportBtn.textContent = "Exporting...";
+
+      try {
+        if (courseEvals.length === 0) {
+          alert("No evaluations found for this course.");
+          return;
+        }
+
+        const baseHeaders = [
+          "course",
+          "section",
+          "term",
+          "evaluationTitle",
+          "evaluationType",
+          "isActive",
+          "responseId",
+          "student",
+          "submittedAt"
+        ];
+
+        const rows = [];
+        const dynamicHeaders = new Set();
+
+        for (const ev of courseEvals) {
+          let results;
+          try {
+            results = await evaluationService.getResults(ev._id);
+          } catch (e) {
+            rows.push({
+              course: courseRecord.course || "",
+              section: courseRecord.section || "",
+              term: courseRecord.term || "",
+              evaluationTitle: ev.title || "Evaluation",
+              evaluationType: ev.evaluationType || "",
+              isActive: ev.isActive ? "Yes" : "No",
+              responseId: "",
+              student: "",
+              submittedAt: "",
+              note: "Failed to load results"
+            });
+            dynamicHeaders.add("note");
+            continue;
+          }
+
+          const responses = results?.responses || [];
+
+          const evaluationQuestionsArray =
+            (Array.isArray(results?.evaluation?.questions) && results.evaluation.questions) ||
+            (responses[0] && Array.isArray(responses[0].answers) ? responses[0].answers : []);
+
+          evaluationQuestionsArray.forEach((qItem, idx) => {
+            const qLabel = getQuestionLabel(qItem, idx);
+            dynamicHeaders.add(`Q: ${String(qLabel).trim()}`);
+          });
+
+          if (responses.length === 0) {
+            rows.push({
+              course: courseRecord.course || "",
+              section: courseRecord.section || "",
+              term: courseRecord.term || "",
+              evaluationTitle: ev.title || "Evaluation",
+              evaluationType: ev.evaluationType || "",
+              isActive: ev.isActive ? "Yes" : "No",
+              responseId: "",
+              student: "",
+              submittedAt: "",
+              note: "No submissions"
+            });
+            dynamicHeaders.add("note");
+            continue;
+          }
+
+          responses.forEach((r) => {
+            const submittedBy = r.submittedBy || null;
+            const studentName = submittedBy?.fullName || submittedBy?.name || submittedBy?.email || "Anonymous / Hidden";
+
+            const answerCols = flattenEvaluationAnswersForSubmission(r, evaluationQuestionsArray);
+
+            rows.push({
+              course: courseRecord.course || "",
+              section: courseRecord.section || "",
+              term: courseRecord.term || "",
+              evaluationTitle: ev.title || "Evaluation",
+              evaluationType: ev.evaluationType || "",
+              isActive: ev.isActive ? "Yes" : "No",
+              responseId: r._id || "",
+              student: studentName,
+              submittedAt: r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "—",
+              ...answerCols
+            });
+          });
+        }
+
+        const headers = [...baseHeaders, ...Array.from(dynamicHeaders)];
+        const csv = toCSVWithHeaders(headers, rows);
+
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        const safeCourse = safeFilePart(courseRecord.course || "course");
+        const safeTerm = safeFilePart(courseRecord.term || "");
+        const safeSection = safeFilePart(courseRecord.section || "");
+        const parts = [safeCourse, safeTerm, safeSection, "export", ts].filter(Boolean);
+
+        downloadTextFile(`${parts.join("_")}.csv`, csv, "text/csv;charset=utf-8;");
+      } catch (err) {
+        alert(err?.data?.message || err?.message || "Failed to export.");
+      } finally {
+        exportBtn.disabled = false;
+        exportBtn.textContent = oldText;
+      }
+    });
+
+    actionsRow.appendChild(exportBtn);
+    body.appendChild(actionsRow);
+
     if (courseEvals.length === 0) {
       body.appendChild(createElement("p", "side-panel-text", "No evaluations found for this course."));
       return;
@@ -324,11 +567,7 @@ export async function renderAdminReports(navigate) {
       const left = createElement("div", "admin-eval-left");
       left.appendChild(createElement("div", "admin-eval-title", ev.title || "Evaluation"));
       left.appendChild(
-        createElement(
-          "div",
-          "admin-eval-meta",
-          `Type: ${ev.evaluationType} | Active: ${ev.isActive ? "Yes" : "No"}`
-        )
+        createElement("div", "admin-eval-meta", `Type: ${ev.evaluationType} | Active: ${ev.isActive ? "Yes" : "No"}`)
       );
 
       const right = createElement("div", "admin-eval-right");
@@ -377,9 +616,7 @@ export async function renderAdminReports(navigate) {
       results = await evaluationService.getResults(evaluation._id);
     } catch (err) {
       body.innerHTML = "";
-      body.appendChild(
-        createElement("p", "side-panel-text", err?.data?.message || err?.message || "Failed to load results")
-      );
+      body.appendChild(createElement("p", "side-panel-text", err?.data?.message || err?.message || "Failed to load results"));
       return;
     }
 
@@ -422,24 +659,14 @@ export async function renderAdminReports(navigate) {
 
       viewBtn.addEventListener("click", async () => {
         const mount = document.createElement("div");
-
         try {
-          await renderEvaluate(
-            () => {},
-            {
-              evaluationId: results.evaluation._id,
-              responseId: record._raw._id,
-              mode: "adminView",
-              mountNode: mount
-            }
-          );
-
-          showLargeModal(
-            "View Submitted Evaluation",
-            mount,
-            () => {}, 
-            "Back to Reports"
-          );
+          await renderEvaluate(() => {}, {
+            evaluationId: results.evaluation._id,
+            responseId: record._raw._id,
+            mode: "adminView",
+            mountNode: mount
+          });
+          showLargeModal("View Submitted Evaluation", mount, () => {}, "Back to Reports");
         } catch (e) {
           showLargeModal(
             "Failed to open evaluation",
