@@ -40,7 +40,9 @@ const testStudent = {
 const testCourse = {
   courseName: 'Software Engineering',
   courseCode: 'CS530',
-  description: 'Test course'
+  description: 'Test course',
+  term: 'Fall 2024',
+  section: '001'
 };
 
 
@@ -84,7 +86,7 @@ describe('UAT - Evaluation System', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       // Create evaluation
       const evaluationData = {
@@ -143,7 +145,7 @@ describe('UAT - Evaluation System', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       const evaluationData = {
         title: 'Test Evaluation',
@@ -249,7 +251,7 @@ describe('UAT - Evaluation System', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       // Create evaluation
       const evaluationData = {
@@ -311,7 +313,7 @@ describe('UAT - Evaluation System', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       // Create ANONYMOUS evaluation
       const evaluationData = {
@@ -414,7 +416,7 @@ describe('UAT - Evaluation System', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       const evaluationData = {
         title: 'Test Evaluation',
@@ -520,7 +522,7 @@ describe('UAT - Evaluation System', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       const evaluationData = {
         title: 'Test Evaluation',

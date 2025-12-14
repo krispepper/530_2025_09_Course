@@ -43,7 +43,9 @@ const testAdmin = {
 const testCourse = {
   courseName: 'Software Engineering',
   courseCode: 'CS530',
-  description: 'Advanced software engineering course'
+  description: 'Test course',
+  term: 'Fall 2024',
+  section: '001'
 };
 
 // Connect to database before tests
@@ -85,6 +87,10 @@ describe('UAT - Course Management', () => {
         .post('/api/courses')
         .send(testCourse);
 
+      console.log('Course creation response:', response.body); // ADD THIS LINE
+
+      expect(response.status).toBe(201);
+
       expect(response.status).toBe(201);
       expect(response.body.message).toBe('Course created successfully');
       expect(response.body.course.courseName).toBe(testCourse.courseName);
@@ -116,7 +122,7 @@ describe('UAT - Course Management', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       // register student
       await request(app)
@@ -178,7 +184,7 @@ describe('UAT - Course Management', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       // register student
       await request(app)
@@ -229,7 +235,7 @@ describe('UAT - Course Management', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       // update course
       const response = await agent
@@ -291,7 +297,7 @@ describe('UAT - Course Management', () => {
         .post('/api/courses')
         .send(testCourse);
 
-      const courseId = courseResponse.body.course.id;
+      const courseId = courseResponse.body.course._id;
 
       // delete course
       const response = await agent

@@ -185,7 +185,7 @@ describe('UAT - User Authentication', () => {
         .get('/api/auth/me');
 
       expect(response.status).toBe(401);
-      expect(response.body.message).toBe('Not authenticated');
+      expect(response.body.message).toBe('Please login to access this resource');
     });
   });
 
